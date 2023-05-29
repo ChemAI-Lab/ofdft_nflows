@@ -53,6 +53,14 @@ def harmonic_potential(params: Any, u: Any, T: Callable, k: Any = 1.) -> jnp.Dev
     x, _ = T(params, u)
     return 0.5*k*jnp.mean(x**2)
 
+
+@partial(jit,  static_argnums=(2,))
+def dirac_exchange(params: Any, u: Any, rho: Callable) -> jnp.DeviceArray:
+    rho_val = rho(params, u)
+
+    l = -(3/4)*(3/jnp.pi)**(1/3)
+    return l*jnp.mean(rho_val**(1/3))
+
 # ------------------------------------------------------------------------------------------------------------
 
 
