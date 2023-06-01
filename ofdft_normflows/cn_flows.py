@@ -11,16 +11,14 @@ from jax.experimental.ode import odeint
 import jax.random as jrnd
 
 import flax
-from flax.training import train_state
-from flax import traverse_util
-from flax.core import freeze, unfreeze
 from flax import linen as nn
-from flax import serialization
 import optax
-from tqdm import tqdm
 
+from sklearn.datasets import make_circles, make_moons, make_s_curve
 
 # file from https://huggingface.co/flax-community/NeuralODE_SDE/raw/main/train_cnf.py
+
+
 def w_1(z):
     return jnp.sin((2 * jnp.pi * z[:, 0]) / 4)
 
@@ -50,6 +48,38 @@ def pot_1(z):
     outer_term_2 = jnp.log(inner_term_1 + inner_term_2 + 1e-7)
     u = outer_term_1 - outer_term_2
     return - u
+
+
+def batch_generator(batch_size: int = 512, d_dim: int = 2):
+    rng = jrnd.PRNGKey(0)
+    _, key = jrnd.split(rng)
+
+    mean = jnp.zeros(d_dim)
+    cov = 0.1*jnp.eye(d_dim)
+    while True:
+        _, key = jrnd.split(key)
+        u = jrnd.multivariate_normal(
+            key, mean=mean, cov=cov, shape=(batch_size,))
+        log_pdf = jax.scipy.stats.multivariate_normal.logpdf(
+            u, mean=mean, cov=cov)
+        # log_pdf = jnp.zeros_like(log_pdf)  # don't know why :/
+
+        u_and_log_pu = lax.concatenate((u, lax.expand_dims(log_pdf, (1,))), 1)
+        yield u_and_log_pu
+
+
+def get_batch_scurve(num_samples):
+    rng = jrnd.PRNGKey(0)
+    _, key = jrnd.split(rng)
+    while True:
+        points, _ = make_s_curve(
+            n_samples=num_samples, noise=0.05, random_state=0)
+        x1 = jnp.array(points, dtype=jnp.float32)[:, :1]
+        x2 = jnp.array(points, dtype=jnp.float32)[:, 2:]
+        x = lax.concatenate((x1, x2), 1)
+        logp_diff_t1 = jnp.zeros((num_samples, 1), dtype=jnp.float32)
+
+        yield lax.concatenate((x, logp_diff_t1), 1)
 # ---------------
 
 
@@ -120,7 +150,7 @@ class Gen_CNF(nn.Module):
     in_out_dim: Any = 2
     hidden_dim: Any = 32
     width: Any = 64
-    bool_neg: bool = True
+    bool_neg: bool = False
 
     def setup(self) -> None:
         self.cnf = CNF(self.in_out_dim, self.hidden_dim,
@@ -138,7 +168,8 @@ class Gen_CNF(nn.Module):
 
 @partial(jax.jit,  static_argnums=(2, 3, 4, 5,))
 def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim: int):
-    start_and_end_time = -1.*jnp.array([t1, t0])  # jnp.array([t0, t1])
+    # time as [t1 to t0] gives nans for the second term :/
+    start_and_end_time = -1.*jnp.array([t1, t0])
 
     def _evol_fun(states, t):
         return f.apply(params, t, states)
@@ -156,27 +187,10 @@ def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim
     z_t1, logp_diff_t1 = z_t[-1], logp_diff_t[-1]
     # return lax.concatenate((z_t0, z_t1), 2), lax.concatenate((lax.expand_dims(logp_diff_t0, (1,)), lax.expand_dims(logp_diff_t1, (1,))), 1)
     return z_t1, logp_diff_t1
+    # return outputs
 
 
-def batch_generator(batch_size: int = 512, d_dim: int = 2):
-    rng = jrnd.PRNGKey(0)
-    _, key = jrnd.split(rng)
-
-    mean = jnp.zeros(d_dim)
-    cov = jnp.eye(d_dim)
-    while True:
-        _, key = jrnd.split(rng)
-        u = jrnd.multivariate_normal(
-            key, mean=mean, cov=cov, shape=(batch_size,))
-        log_pdf = jax.scipy.stats.multivariate_normal.logpdf(
-            u, mean=mean, cov=cov)
-        log_pdf = jnp.zeros_like(log_pdf)  # don't know why :/
-
-        u_and_log_pu = lax.concatenate((u, lax.expand_dims(log_pdf, (1,))), 1)
-        yield u_and_log_pu
-
-
-def main():
+def main(batch_size, epochs):
 
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
@@ -186,7 +200,7 @@ def main():
     params = model.init(key, jnp.array(0.), test_inputs)
 
     from jax.tree_util import tree_map
-    params = jax.tree_util.tree_map(lambda x: 0.1 * jnp.ones_like(x), params)
+    # params = jax.tree_util.tree_map(lambda x: 0.1 * jnp.ones_like(x), params)
     # print(params)
 
     def NODE(params, batch): return neural_ode(
@@ -197,12 +211,18 @@ def main():
     optimizer = optax.adam(learning_rate=1e-3)
     opt_state = optimizer.init(params)
 
+    def log_p_z0(samples):
+        d_dim = samples.shape[1]
+        mean = jnp.zeros(d_dim)
+        cov = 0.1*jnp.eye(d_dim)
+        return jax.scipy.stats.multivariate_normal.logpdf(samples, mean=mean, cov=cov)
+
     def loss(params, samples):
-        x, log_px = NODE(params, samples)
-        log_p_x = log_target_density(x)
-        # return -1.*jnp.mean(log_p_x)
-        return jnp.linalg.norm(log_p_x - log_px)
-        # return jnp.mean(- sum_log_det - (log_p_x))
+        zt0, logp_zt0 = NODE(params, samples)
+        logp_x = log_p_z0(zt0) - logp_zt0
+        # log_p_x = log_target_density(x)
+        return -1.*jnp.mean(logp_x)
+        # return jnp.linalg.norm(log_p_x - log_px)
 
     @jax.jit
     def step(params, opt_state, batch):
@@ -211,31 +231,51 @@ def main():
         params = optax.apply_updates(params, updates)
         return params, opt_state, loss_value
 
-    batch_size = 128
-    gen_batch = batch_generator(batch_size, 2)
-    for i in range(1000):
+    batch_size = 512
+    # gen_batch = batch_generator(batch_size, 2)
+    gen_batch = get_batch_scurve(batch_size)
+    epochs = 500
+
+    # batch = next(gen_batch)
+    # print(batch)
+    # # print(loss(params, next(gen_batch)))
+    # out = NODE(params, batch)
+    # print(out)
+    # assert 0
+
+    for i in range(epochs+1):
 
         batch = next(gen_batch)
         params, opt_state, loss_value = step(params, opt_state, batch)
-        if i % 100 == 0:
+        if i % 50 == 0:
             print(f'step {i}, loss: {loss_value}')
 
     png = jrnd.PRNGKey(1)
     _, key = jrnd.split(png)
 
-    u = jrnd.multivariate_normal(key, mean=jnp.zeros(
-        (2,)), cov=jnp.eye(2), shape=(2000,))
-    log_pu = jax.scipy.stats.multivariate_normal.logpdf(u, mean=jnp.zeros(
-        (2,)), cov=jnp.eye(2))
-    u_and_log_pu = lax.concatenate((u, lax.expand_dims(log_pu, (1,))), 1)
-    x, _ = NODE(params, u_and_log_pu)
+    z0 = jrnd.multivariate_normal(key, mean=jnp.zeros(
+        (2,)), cov=0.1*jnp.eye(2), shape=(2000,))
+    # log_pu = jax.scipy.stats.multivariate_normal.logpdf(u, mean=jnp.zeros(
+    # (2,)), cov=0.1*jnp.eye(2))
+    logp_z0 = jnp.zeros((2000, 1))
+    u_and_log_pu = lax.concatenate((z0, logp_z0), 1)
+    print(u_and_log_pu.shape)
 
-    plt.title('Sampels from the NormFlow')
-    plt.scatter(x[:, 0], x[:, 1])
-    plt.xlim(-4, 4)
-    plt.ylim(-4, 4)
+    # x, _ = NODE(params, u_and_log_pu,)
+    zt, logp_zt = neural_ode(params, u_and_log_pu, model, 1., 0., 2)
+    print(zt)
+    print(logp_zt)
+    assert 0
+    plt.title('Samples from the NormFlow')
+    # plt.scatter(z0[:, 0], z0[:, 1], c='k', marker='*')
+    plt.scatter(zt[:, 0], zt[:, 1])
+    # plt.xlim(-4, 4)
+    # plt.ylim(-4, 4)
     plt.savefig('Figures/CNF_twomoons.png')
 
 
 if __name__ == '__main__':
-    main()
+    batch_size = 512
+    epochs = 500
+
+    main(batch_size, epochs)
