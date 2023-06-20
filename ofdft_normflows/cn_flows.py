@@ -1,7 +1,7 @@
 
 from functools import partial
 import jax
-from typing import Any, Callable, Sequence, Optional, NewType
+from typing import Any, Callable, Sequence, Optional, NewType, Tuple
 from jax import lax, random, vmap, scipy, numpy as jnp
 from jax.experimental.ode import odeint
 import jax.random as jrnd
@@ -49,7 +49,7 @@ class HyperNetwork(nn.Module):
         return W, B, U
 
 
-class CNF(nn.Module):
+class CNFRicky(nn.Module):
     """Adapted from the Pytorch implementation at:
     https://github.com/rtqichen/torchdiffeq/blob/master/examples/cnf.py
     """
@@ -72,6 +72,54 @@ class CNF(nn.Module):
         dlogp_z_dt = -1.0 * jnp.trace(df_dz, 0, 0, 2)
 
         return lax.concatenate((dz_dt, lax.expand_dims(dlogp_z_dt, (1,))), 1)
+
+
+class SimpleMLP(nn.Module):
+    in_out_dims: Any
+    features: Tuple[int]
+
+    def setup(self):
+        # we automatically know what to do with lists, dicts of submodules
+        self.layers = [nn.Dense(feat)
+                       for feat in self.features]
+        self.last_layer = nn.Dense(self.in_out_dims)
+
+    @nn.compact
+    def __call__(self, t, samples):
+        # add an if statement to add batch dimension
+        samples = samples[jnp.newaxis, :]
+        z = lax.concatenate(
+            (t*jnp.ones((samples.shape[0], 1)), samples), 1)
+
+        for i, lyr in enumerate(self.layers):
+            z = lyr(z)
+            z = nn.softplus(1.*z) / \
+                1.  # if it takes too long remove the 100.
+
+        value = self.last_layer(z)
+        return value[0]
+
+
+class CNFMLP(nn.Module):
+    """Adapted from the Pytorch implementation at:
+    https://github.com/rtqichen/torchdiffeq/blob/master/examples/cnf.py
+    """
+    in_out_dim: Any
+    features: Tuple[int]
+
+    def setup(self):
+        self.net = SimpleMLP(self.in_out_dim, self.features)
+
+    @nn.compact
+    def __call__(self, t, states):
+        z, logp_z = states[:, :self.in_out_dim], states[:, self.in_out_dim:]
+
+        def f(z): return self.net(t, z)
+        df_dz = vmap(jax.jacrev(f))(z)
+        dlogp_z_dt = -1.0 * jnp.trace(df_dz, 0, 1, 2)
+
+        dz = vmap(f)(z)
+        return lax.concatenate((dz, dlogp_z_dt[:, None]), 1)
 
 
 class Gen_CNF(nn.Module):
@@ -117,3 +165,15 @@ def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim
     # return lax.concatenate((z_t0, z_t1), 2), lax.concatenate((lax.expand_dims(logp_diff_t0, (1,)), lax.expand_dims(logp_diff_t1, (1,))), 1)
     return z_t1, logp_diff_t1
     # return outputs
+
+
+if __name__ == '__main__':
+    import jax.random as jrnd
+    rng = jrnd.PRNGKey(0)
+    _, key = jrnd.split(rng)
+
+    model = CNFMLP(3, [100, 100])
+    params = model.init(key, jnp.array(0.), jnp.array([[1., 1., 1., 1.]]))
+    # print(model.apply(params, jnp.array(0.), jnp.array([[1.,  1.]])))
+    x = jnp.zeros((10, 4))
+    print(model.apply(params, jnp.array(0.), x))
