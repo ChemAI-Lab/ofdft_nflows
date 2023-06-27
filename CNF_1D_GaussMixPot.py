@@ -99,25 +99,25 @@ def main(batch_size: int = 256, epochs: int = 100):
         if loss_epoch < loss0:
             params_opt, loss0 = params, loss_epoch
 
-    x = jnp.linspace(-4., 4., 1000)[:, jnp.newaxis]
-    logp_samples = prior_dist.log_prob(x)
-    print(x[:, jnp.newaxis, :].shape)
-    plt.plot(x, rho(params_opt, x))
-    plt.plot(x, prior_dist.prob(x))
+    z = jnp.linspace(-4., 4., 1000)[:, jnp.newaxis]
+    logp_samples = prior_dist.log_prob(z)
+    samples = lax.concatenate((z, logp_samples), 1)
+    plt.plot(z, rho(params_opt, samples))
+    plt.plot(z, prior_dist.prob(z))
     def T(params, x): return x
 
     def f_test(x):
         print(x.shape)
         return jnp.sum(1./x, axis=-1)
 
-    f_v = vmap(GaussianPotential1D, in_axes=(None, 0, None))
-    GP_pot = f_v(None, x[:, jnp.newaxis, :], T)
-    plt.plot(x, GP_pot)
+    # f_v = vmap(GaussianPotential1D, in_axes=(None, 0, None))
+    # GP_pot = f_v(None, x[:, jnp.newaxis, :], T)
+    # plt.plot(x, GP_pot)
     plt.savefig('GaussPot.png')
 
 
 if __name__ == "__main__":
-    main(512, 10000)
+    main(512, 1000)
     # x = jnp.linspace(-4., 4., 1000)[:, jnp.newaxis]
     # xv = x[:, jnp.newaxis, :]
 

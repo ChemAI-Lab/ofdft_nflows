@@ -74,6 +74,27 @@ class CNFRicky(nn.Module):
         return lax.concatenate((dz_dt, lax.expand_dims(dlogp_z_dt, (1,))), 1)
 
 
+class Gen_CNFRicky(nn.Module):
+    """Negative CNF for jax's odeint."""
+    in_out_dim: Any = 2
+    hidden_dim: Any = 32
+    width: Any = 64
+    bool_neg: bool = False
+
+    def setup(self) -> None:
+        self.cnf = CNFRicky(self.in_out_dim, self.hidden_dim,
+                            self.width)
+        if self.bool_neg:
+            self.y0 = -1.
+        else:
+            self.y0 = 1.
+
+    @nn.compact
+    def __call__(self, t, states):
+        outputs = self.cnf(self.y0 * t, states)
+        return self.y0 * outputs
+
+
 class SimpleMLP(nn.Module):
     in_out_dims: Any
     features: Tuple[int]
@@ -82,7 +103,10 @@ class SimpleMLP(nn.Module):
         # we automatically know what to do with lists, dicts of submodules
         self.layers = [nn.Dense(feat)
                        for feat in self.features]
-        self.last_layer = nn.Dense(self.in_out_dims)
+        self.last_layer = nn.Dense(
+            self.in_out_dims,
+            kernel_init=jax.nn.initializers.zeros,
+            bias_init=jax.nn.initializers.zeros)
 
     @nn.compact
     def __call__(self, t, samples):
@@ -93,14 +117,14 @@ class SimpleMLP(nn.Module):
 
         for i, lyr in enumerate(self.layers):
             z = lyr(z)
-            z = nn.softplus(1.*z) / \
-                1.  # if it takes too long remove the 100.
+            z = nn.softplus(10.*z) / \
+                10.  # if it takes too long remove the 100.
 
         value = self.last_layer(z)
         return value[0]
 
 
-class CNFMLP(nn.Module):
+class CNFSimpleMLP(nn.Module):
     """Adapted from the Pytorch implementation at:
     https://github.com/rtqichen/torchdiffeq/blob/master/examples/cnf.py
     """
@@ -122,16 +146,14 @@ class CNFMLP(nn.Module):
         return lax.concatenate((dz, dlogp_z_dt[:, None]), 1)
 
 
-class Gen_CNF(nn.Module):
+class Gen_CNFSimpleMLP(nn.Module):
     """Negative CNF for jax's odeint."""
-    in_out_dim: Any = 2
-    hidden_dim: Any = 32
-    width: Any = 64
+    in_out_dim: Any
+    features: Tuple[int]
     bool_neg: bool = False
 
     def setup(self) -> None:
-        self.cnf = CNF(self.in_out_dim, self.hidden_dim,
-                       self.width)
+        self.cnf = CNFSimpleMLP(self.in_out_dim, self.features)
         if self.bool_neg:
             self.y0 = -1.
         else:
@@ -172,7 +194,7 @@ if __name__ == '__main__':
     rng = jrnd.PRNGKey(0)
     _, key = jrnd.split(rng)
 
-    model = CNFMLP(3, [100, 100])
+    model = Gen_CNFSimpleMLP(3, [100, 100])
     params = model.init(key, jnp.array(0.), jnp.array([[1., 1., 1., 1.]]))
     # print(model.apply(params, jnp.array(0.), jnp.array([[1.,  1.]])))
     x = jnp.zeros((10, 4))
