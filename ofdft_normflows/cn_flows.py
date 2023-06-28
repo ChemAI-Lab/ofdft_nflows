@@ -12,6 +12,8 @@ import optax
 
 # file from https://huggingface.co/flax-community/NeuralODE_SDE/raw/main/train_cnf.py
 
+a_initializer = jax.nn.initializers.normal()
+
 
 class HyperNetwork(nn.Module):
     """Hyper-network allowing f(z(t), t) to change with time.
@@ -95,30 +97,51 @@ class Gen_CNFRicky(nn.Module):
         return self.y0 * outputs
 
 
+class FourierFeatures(nn.Module):
+    num_features: int
+
+    def setup(self):
+        # Initialize the random Fourier matrix A
+        self.ff_layer = nn.Dense(self.num_features, use_bias=False)
+
+    @nn.compact
+    def __call__(self, x):
+
+        # Compute the Fourier features using the given input tensor x
+        x = self.ff_layer(x)
+        fourier_features = jnp.concatenate([jnp.cos(jnp.pi * x),
+                                            jnp.sin(jnp.pi * x)], axis=-1)
+        return fourier_features
+
+
 class SimpleMLP(nn.Module):
     in_out_dims: Any
     features: Tuple[int]
 
     def setup(self):
         # we automatically know what to do with lists, dicts of submodules
+        self.ff = FourierFeatures(self.features[0])
         self.layers = [nn.Dense(feat)
-                       for feat in self.features]
+                       for feat in self.features[1:]]
         self.last_layer = nn.Dense(
             self.in_out_dims,
             kernel_init=jax.nn.initializers.zeros,
             bias_init=jax.nn.initializers.zeros)
+        # kernel_init=jax.nn.initializers.constant(1E-3),
+        # bias_init=jax.nn.initializers.constant(1E-3))
 
     @nn.compact
     def __call__(self, t, samples):
         # add an if statement to add batch dimension
         samples = samples[jnp.newaxis, :]
+        samples = self.ff(samples)
         z = lax.concatenate(
             (t*jnp.ones((samples.shape[0], 1)), samples), 1)
 
         for i, lyr in enumerate(self.layers):
             z = lyr(z)
-            z = nn.softplus(10.*z) / \
-                10.  # if it takes too long remove the 100.
+            z = nn.softplus(1.*z) / \
+                1.  # if it takes too long remove the 100.
 
         value = self.last_layer(z)
         return value[0]
@@ -191,11 +214,18 @@ def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim
 
 if __name__ == '__main__':
     import jax.random as jrnd
+    from jax.tree_util import tree_map
     rng = jrnd.PRNGKey(0)
     _, key = jrnd.split(rng)
 
-    model = Gen_CNFSimpleMLP(3, [100, 100])
+    model = FourierFeatures(10)
+    params = model.init(key, jnp.ones((1, 3)))
+    print(params)
+    model = Gen_CNFSimpleMLP(3, [10, 10])
     params = model.init(key, jnp.array(0.), jnp.array([[1., 1., 1., 1.]]))
-    # print(model.apply(params, jnp.array(0.), jnp.array([[1.,  1.]])))
-    x = jnp.zeros((10, 4))
-    print(model.apply(params, jnp.array(0.), x))
+    print(params)
+    # params_bool = tree_map(lambda x: params.shape, params)
+
+    # # print(model.apply(params, jnp.array(0.), jnp.array([[1.,  1.]])))
+    # x = jnp.zeros((10, 4))
+    # print(model.apply(params, jnp.array(0.), x))

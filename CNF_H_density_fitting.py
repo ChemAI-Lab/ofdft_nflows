@@ -32,10 +32,10 @@ KeyArray = Union[Array, prng.PRNGKeyArray]
 # jax.config.update("jax_enable_x64", True)
 
 
+@jax.jit
 def log_p_z0(samples):
     d_dim = samples.shape[1]
-    # mean = jnp.zeros(d_dim)  # 5.*jnp.ones(d_dim)
-    mean = jnp.array([[0., 0., 0.], [0.76, 0., 0.]])
+    mean = jnp.zeros(d_dim)  # 5.*jnp.ones(d_dim)
     cov = 0.01*jnp.eye(d_dim)
     logp = jax.scipy.stats.multivariate_normal.logpdf(
         samples, mean=mean, cov=cov)
@@ -135,7 +135,7 @@ def _plotting(rho_pred, rho_true, XY, _label: Any):
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     plt.tight_layout()
-    plt.savefig(f'Figures/CNF_rho_H2_{i}_H2Pz.png')
+    plt.savefig(f'Figures/CNF_maxLH/CNF_rho_H2_{i}.png')
 
 
 def main(batch_size, epochs):
@@ -143,8 +143,8 @@ def main(batch_size, epochs):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(3, (200, 200,), bool_neg=False)
-    model_fwd = CNF(3, (200, 200,), bool_neg=True)
+    model_rev = CNF(3, (96, 96, 96, 96,), bool_neg=False)
+    model_fwd = CNF(3, (96, 96, 96, 96,), bool_neg=True)
     # model_rev = Gen_CNFRicky(3, bool_neg=False)
     # model_fwd = Gen_CNFRicky(3, bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
@@ -158,7 +158,7 @@ def main(batch_size, epochs):
     def NODE_fwd(params, batch): return neural_ode(
         params, batch, model_fwd, 0., 10., 3)
 
-    optimizer = optax.adam(learning_rate=1e-3)
+    optimizer = optax.adam(learning_rate=3e-4)
     opt_state = optimizer.init(params)
 
     @jax.jit
@@ -166,8 +166,8 @@ def main(batch_size, epochs):
         samples, log_true_rho = samples
         zt0, logp_zt0 = NODE_rev(params, samples)
         logp_x = log_p_z0(zt0) - logp_zt0
-        return - 1.*jnp.mean(logp_x)
-        # return jnp.mean(logp_x - log_true_rho)
+        # return - 1.*jnp.mean(logp_x)
+        return -1.*jnp.mean(logp_x - log_true_rho)
 
     @jax.jit
     def step(params, opt_state, batch):
@@ -182,21 +182,48 @@ def main(batch_size, epochs):
 
         batch = next(gen_batch)
         params, opt_state, loss_value = step(params, opt_state, batch)
-        if i % 10 == 0:
+        if i % 5 == 0:
             print(f'step {i}, loss: {loss_value}')
+
+            png = jrnd.PRNGKey(1)
+            _, key = jrnd.split(png)
+
+            u0 = jnp.linspace(-1.0, 2., 15)
+            u1 = jnp.linspace(-1.0, 2., 15)
+            u0_, u1_ = jnp.meshgrid(u0, u1)
+            u01t = lax.concatenate(
+                (jnp.expand_dims(u0_.ravel(), 1), jnp.expand_dims(u1_.ravel(), 1)), 1)
+
+            u2 = jnp.linspace(-1.5, 1.5, 15)
+            u2 = jnp.append(u2, jnp.zeros(1))
+            for j, u2i in enumerate(u2):
+                zt = lax.concatenate(
+                    (u01t, u2i*jnp.ones((u01t.shape[0], 1))), 1)
+                logp_zt = jnp.zeros_like(zt[:, :1])
+                zt_and_log_pzt = lax.concatenate((zt, logp_zt), 1)
+
+                z0, logp_diff_z0 = NODE_rev(params, zt_and_log_pzt)
+                logp_x = log_p_z0(z0) - logp_diff_z0
+                rho_pred = logp_x  # jnp.exp(logp_x)
+                rho_true = jnp.log(_rho_eval(zt))
+
+                _plotting(rho_pred[:, None], rho_true,
+                          (u0_, u1_), (f"{j}_{i}", u2i))
+
         if loss_value < loss0:
             params_opt, loss0 = params, loss_value
 
+    assert 0
     png = jrnd.PRNGKey(1)
     _, key = jrnd.split(png)
 
-    u0 = jnp.linspace(-10., 10.5, 10)
-    u1 = jnp.linspace(-10.5, 10.5, 10)
+    u0 = jnp.linspace(-1.0, 1.5, 15)
+    u1 = jnp.linspace(-1.0, 1.5, 15)
     u0_, u1_ = jnp.meshgrid(u0, u1)
     u01t = lax.concatenate(
         (jnp.expand_dims(u0_.ravel(), 1), jnp.expand_dims(u1_.ravel(), 1)), 1)
 
-    u2 = jnp.linspace(-2.5, 2.5, 15)
+    u2 = jnp.linspace(-1.5, 1.5, 15)
     u2 = jnp.append(u2, jnp.zeros(1))
     for i, u2i in enumerate(u2):
         zt = lax.concatenate(
@@ -215,7 +242,7 @@ def main(batch_size, epochs):
 if __name__ == '__main__':
 
     batch_size = int(512/2)
-    epochs = 500
+    epochs = 100
 
     main(batch_size, epochs)
 
@@ -247,3 +274,84 @@ if __name__ == '__main__':
 # plt.title('Samples from the NormFlow')
 # plt.scatter(zt[:, 0], zt[:, 1])
 # plt.savefig('Figures/CNF_Hatom.png')
+
+
+# def check_rho_1D():
+#     png = jrnd.PRNGKey(0)
+#     _, key = jrnd.split(png)
+
+#     model_rev = CNF(1, (200, 200,), bool_neg=False)
+#     model_fwd = CNF(1, (200, 200,), bool_neg=True)
+#     # model_rev = Gen_CNFRicky(3, bool_neg=False)
+#     # model_fwd = Gen_CNFRicky(3, bool_neg=True)
+#     test_inputs = lax.concatenate((jnp.ones((1, 1)), jnp.ones((1, 1))), 1)
+#     params = model_rev.init(key, jnp.array(0.), test_inputs)
+
+#     @jax.jit
+#     def NODE_rev(params, batch): return neural_ode(
+#         params, batch, model_rev, -10., 0., 1)
+
+#     @jax.jit
+#     def NODE_fwd(params, batch): return neural_ode(
+#         params, batch, model_fwd, 0., 10., 1)
+
+#     zt = jnp.linspace(-250., 250., 5000)[:, None]
+#     logp_zt = jnp.zeros_like(zt)
+#     zt_and_logp_zt = lax.concatenate((zt, logp_zt), 1)
+#     zt0, logp_zt0 = NODE_rev(params, zt_and_logp_zt)
+#     logp_x = log_p_z0(zt0) - logp_zt0
+
+#     print(jnp.trapz(jnp.exp(logp_x).ravel(), zt.ravel()))
+
+#     plt.plot(zt,)
+
+
+# def check_rho():
+#     mol = pyscf.M(atom='''
+#                 H  0. 0. 0.
+#                 H  0.76 0. 0.
+#             ''', basis='sto-3g')  # , spin=1
+
+#     mf = dft.RKS(mol)
+#     mf.kernel()
+#     dm = mf.make_rdm1()
+#     # mf.grids.level = 3
+#     coords = mf.grids.coords
+#     weights = mf.grids.weights
+
+#     ao_value = numint.eval_ao(mol, coords, deriv=1)
+#     rho_and_grho = numint.eval_rho(mol, ao_value, dm, xctype='GGA')
+#     rho = rho_and_grho[0]
+#     print(jnp.vdot(weights, rho))
+
+#     png = jrnd.PRNGKey(0)
+#     _, key = jrnd.split(png)
+
+#     model_rev = CNF(3, (200, 200,), bool_neg=False)
+#     model_fwd = CNF(3, (200, 200,), bool_neg=True)
+#     # model_rev = Gen_CNFRicky(3, bool_neg=False)
+#     # model_fwd = Gen_CNFRicky(3, bool_neg=True)
+#     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
+#     params = model_rev.init(key, jnp.array(0.), test_inputs)
+
+#     @jax.jit
+#     def NODE_rev(params, batch): return neural_ode(
+#         params, batch, model_rev, -10., 0., 3)
+
+#     @jax.jit
+#     def NODE_fwd(params, batch): return neural_ode(
+#         params, batch, model_fwd, 0., 10., 3)
+
+#     optimizer = optax.adam(learning_rate=1e-3)
+#     opt_state = optimizer.init(params)
+
+#     zt = jnp.array(coords)
+#     logp_zt = jnp.zeros((zt.shape[0], 1))
+#     zt_and_logp_zt = lax.concatenate((zt, logp_zt), 1)
+
+#     zt0, logp_zt0 = NODE_rev(params, zt_and_logp_zt)
+#     logp_x = log_p_z0(zt0) - logp_zt0
+#     print(logp_x.shape, weights.shape)
+#     print(jnp.vdot(jnp.array(weights), jnp.exp(logp_x).ravel()))
+
+#     # return jnp.asarray(rho_and_grho[0])[:, jnp.newaxis]/mol.tot_electrons()

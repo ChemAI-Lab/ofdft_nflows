@@ -103,22 +103,22 @@ def main(batch_size, epochs):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    # model_rev = CNF(2, (500, 500,), bool_neg=True)
-    # model_fwd = CNF(2, (500, 500,), bool_neg=False)
-    model_rev = Gen_CNFRicky(2, 128, 254, bool_neg=True)
-    model_fwd = Gen_CNFRicky(2, 128, 254, bool_neg=False)
+    model_rev = CNF(2, (96, 96, ), bool_neg=True)
+    model_fwd = CNF(2, (96, 96, ), bool_neg=False)
+    # model_rev = Gen_CNFRicky(2, 128, 254, bool_neg=True)
+    # model_fwd = Gen_CNFRicky(2, 128, 254, bool_neg=False)
     test_inputs = lax.concatenate((jnp.ones((1, 2)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
     @jax.jit
     def NODE_rev(params, batch): return neural_ode(
-        params, batch, model_rev, -10., 0., 2)
+        params, batch, model_rev, -1., 0., 2)
 
     @jax.jit
     def NODE_fwd(params, batch): return neural_ode(
-        params, batch, model_fwd, 0., 10., 2)
+        params, batch, model_fwd, 0., 1., 2)
 
-    optimizer = optax.adam(learning_rate=1e-3)
+    optimizer = optax.adam(learning_rate=3e-4)
     opt_state = optimizer.init(params)
 
     @jax.jit
@@ -137,7 +137,7 @@ def main(batch_size, epochs):
         logp_x = logp_z0(z0) + logp_zt  # check the sign
         logp_true = log_target_density(zt)
         # return -1.*jnp.mean(logp_x)
-        return jnp.linalg.norm(logp_x - logp_true)
+        return jnp.mean(logp_x - logp_true)
 
     @jax.jit
     def step(params, opt_state, batch):
@@ -167,21 +167,27 @@ def main(batch_size, epochs):
         z0, mean=jnp.zeros((2,)), cov=0.1*jnp.eye(2))
     u_and_log_pu = lax.concatenate((z0, log_pz0[:, None]), 1)
 
-    zt, logp_zt = NODE_fwd(params_opt, u_and_log_pu)
+    zt_samples, logp_zt_samples = NODE_fwd(params_opt, u_and_log_pu)
 
-    plt.title('Samples from the NormFlow')
-    plt.scatter(zt[:, 0], zt[:, 1])
-    plt.savefig('Figures/CNF_twomoons_KLrev.png')
+    # zt_and_logp_zt = lax.concatenate((zt, logp_zt), 1)
+    # z0_test, logp_z0_test = NODE_rev(params_opt, zt_and_logp_zt)
 
-    u0 = jnp.linspace(-3.25, 3.25, 100)
-    u1 = jnp.linspace(-3.25, 3.25, 100)
+    # print(jnp.linalg.norm(z0 - z0_test))
+    # print(log_pz0[:10], logp_z0_test[:10])
+
+    # plt.title('Samples from the NormFlow')
+    # plt.scatter(zt[:, 0], zt[:, 1])
+    # plt.savefig('Figures/CNF_twomoons_KLrev.png')
+
+    u0 = jnp.linspace(-4.25, 4.25, 100)
+    u1 = jnp.linspace(-4.25, 4.25, 100)
     u0_, u1_ = jnp.meshgrid(u0, u1)
     zt = lax.concatenate(
         (jnp.expand_dims(u0_.ravel(), 1), jnp.expand_dims(u1_.ravel(), 1)), 1)
     zt_and_log_pzt = lax.concatenate((zt, jnp.zeros_like(zt[:, :1])), 1)
 
     z0, logp_diff_z0 = NODE_rev(params_opt, zt_and_log_pzt)
-    logp_x = logp_z0(z0) + logp_diff_z0  # check the sign
+    logp_x = logp_z0(z0) - logp_diff_z0  # check the sign
 
     plt.figure(0)
     plt.clf()
@@ -189,6 +195,7 @@ def main(batch_size, epochs):
     plt.contourf(u0_, u1_, log_target_density(zt).reshape(u0_.shape))
     plt.contour(u0_, u1_, logp_x.reshape(u0_.shape), levels=25, cmap='binary',
                 linestyles='dashed', linewidths=0.75)
+    plt.scatter(zt_samples[:, 0], zt_samples[:, 1], s=10)
     plt.savefig('Figures/CNF_logP_twomoons_KLrev.png')
 
 
