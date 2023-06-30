@@ -1,31 +1,21 @@
-from functools import partial
-from typing import Any, Callable, Sequence, Optional, NewType, Union
+from typing import Any, Union
 
 import jax
-from jax import lax, random, vmap, scipy, numpy as jnp
-from jax.experimental.ode import odeint
+from jax import lax,  numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
-import flax
-from flax import linen as nn
+
+from flax.training import train_state, checkpoints, orbax_utils
+from flax.core import FrozenDict
+from orbax import checkpoint as orbax_checkpoint
 import optax
 from distrax import MultivariateNormalDiag
 from distrax._src.distributions import distribution
 
-import numpy as np
-import pyscf
-from pyscf import gto, dft, lib
-from pyscf.dft import numint
-from pyscf.dft import r_numint
-from pyscf.data.nist import BOHR
-
-from ofdft_normflows.functionals import _kinetic
-from ofdft_normflows.functionals import harmonic_potential
-from ofdft_normflows.cn_flows import neural_ode, Gen_CNFRicky
+from ofdft_normflows.cn_flows import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.dft_distrax import DFTDistribution
-
 
 import matplotlib.pyplot as plt
 
@@ -34,6 +24,9 @@ KeyArray = Union[Array, prng.PRNGKeyArray]
 
 # jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_debug_nans", True)
+
+CKPT_DIR = "Results/acrolein_MLL"
+FIG_DIR = "Figures/acrolein_MLL"
 
 
 def batch_generator(prior_dist: distribution, batch_size: int = 512, l: Any = 0, bool_logp_z0_zeros: bool = True):
@@ -76,7 +69,7 @@ def _plotting(rho_pred, rho_true, XY, _label: Any):
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     plt.tight_layout()
-    plt.savefig(f'Figures/acrolein_MLL/CNFrho_acrolein_{i}_KLrev.png')
+    plt.savefig(f'{FIG_DIR}/CNFrho_acrolein_{i}_KLrev.png')
 
 
 def main(batch_size, epochs):
@@ -84,15 +77,6 @@ def main(batch_size, epochs):
     cov = 0.1 * jnp.ones((3,))
     prior_dist = MultivariateNormalDiag(mean, cov)
     gen_batch = batch_generator(prior_dist, batch_size)
-
-#   O  -1.808864  -0.137998  0.000000
-#   C  1.769114  0.136549  0.000000
-#   C  0.588145  -0.434423  0.000000
-#   C  -0.695203  0.361447  0.000000
-#   H  -0.548852  1.455362  0.000000
-#   H  0.477859  -1.512556  0.000000
-#   H  2.688665  -0.434186  0.000000
-#   H  1.880903  1.213924  0.000000
 
     atoms = ['O', 'C', 'C', 'C', 'H', 'H', 'H', 'H']
     geom = jnp.array([[-1.808864,  -0.137998,  0.000000],
@@ -108,18 +92,16 @@ def main(batch_size, epochs):
     def log_target_density(x):
         return jnp.log(dft_dist.prob(dft_dist, x))  # +1E-7
 
-    # print(jax.jacrev(log_target_density)(next(gen_batch)[:, :-1]))
-    # assert 0
-
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
     model_rev = CNF(3, (96, 96,), bool_neg=False)
     model_fwd = CNF(3, (96, 96,), bool_neg=True)
-    # model_rev = Gen_CNFRicky(3, bool_neg=False)
-    # model_fwd = Gen_CNFRicky(3, bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
+
+    restored_state = checkpoints.restore_checkpoint(
+        ckpt_dir=CKPT_DIR, target=params, step=0)
 
     @jax.jit
     def NODE_rev(params, batch): return neural_ode(
@@ -132,7 +114,8 @@ def main(batch_size, epochs):
     optimizer = optax.adam(learning_rate=3e-4)
     opt_state = optimizer.init(params)
 
-    # @jax.jit
+    params = restored_state
+
     def loss(params, samples):
         z0 = samples[:, :-1]
         zt, logp_zt = NODE_fwd(params, samples)
@@ -163,17 +146,25 @@ def main(batch_size, epochs):
             print(f'step {i}, loss: {loss_value}')
 
         if i % 100 == 0:
+
+            f_ = f"{CKPT_DIR}/acrolein_{i}.npy"
+
+            checkpoints.save_checkpoint(
+                ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
+
             png = jrnd.PRNGKey(1)
             _, key = jrnd.split(png)
 
-            u0 = jnp.linspace(-3., 3., 12)
-            u1 = jnp.linspace(-3., 3., 12)
+            u0 = jnp.linspace(-3., 3., 25)
+            u1 = jnp.linspace(-3., 3., 25)
             u0_, u1_ = jnp.meshgrid(u0, u1)
             u01t = lax.concatenate(
                 (jnp.expand_dims(u0_.ravel(), 1), jnp.expand_dims(u1_.ravel(), 1)), 1)
 
             u2 = jnp.linspace(-1.5, 1.5, 10)
             u2 = jnp.sort(jnp.append(u2, jnp.zeros(1)))
+
+            results = {'grid': {'x': u0_, 'y': u1_, 'z': u2}}
             for j, u2j in enumerate(u2):
                 zt = lax.concatenate(
                     (u01t, u2j*jnp.ones((u01t.shape[0], 1))), 1)
@@ -185,12 +176,26 @@ def main(batch_size, epochs):
                 rho_pred = logp_x  # jnp.exp(logp_x)
                 rho_true = log_target_density(zt)
 
+                results.update({'j': {'cnf': rho_pred, 'dft': rho_true}})
+                jnp.save(f_, results, allow_pickle=True)
                 _plotting(rho_pred, rho_true, (u0_, u1_), (f"{j}-{i}", u2j))
+
+    # print(jnp.load(f_, allow_pickle=True))
 
 
 if __name__ == '__main__':
 
     batch_size = 512
-    epochs = 800
+    epochs = 10000
 
     main(batch_size, epochs)
+# https://www.molcas.org/documentation/manual/node28.html
+
+#   O  -1.808864  -0.137998  0.000000
+#   C  1.769114  0.136549  0.000000
+#   C  0.588145  -0.434423  0.000000
+#   C  -0.695203  0.361447  0.000000
+#   H  -0.548852  1.455362  0.000000
+#   H  0.477859  -1.512556  0.000000
+#   H  2.688665  -0.434186  0.000000
+#   H  1.880903  1.213924  0.000000

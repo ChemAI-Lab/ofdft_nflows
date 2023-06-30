@@ -120,9 +120,9 @@ class SimpleMLP(nn.Module):
 
     def setup(self):
         # we automatically know what to do with lists, dicts of submodules
-        self.ff = FourierFeatures(self.features[0])
+        # self.ff = FourierFeatures(self.features[0])
         self.layers = [nn.Dense(feat)
-                       for feat in self.features[1:]]
+                       for feat in self.features]  # [1:]
         self.last_layer = nn.Dense(
             self.in_out_dims,
             kernel_init=jax.nn.initializers.zeros,
@@ -134,7 +134,7 @@ class SimpleMLP(nn.Module):
     def __call__(self, t, samples):
         # add an if statement to add batch dimension
         samples = samples[jnp.newaxis, :]
-        samples = self.ff(samples)
+        # samples = self.ff(samples)
         z = lax.concatenate(
             (t*jnp.ones((samples.shape[0], 1)), samples), 1)
 
