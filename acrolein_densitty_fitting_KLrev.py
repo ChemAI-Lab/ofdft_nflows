@@ -93,8 +93,8 @@ def training(batch_size, epochs):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(3, (96, 96,), bool_neg=False)
-    model_fwd = CNF(3, (96, 96,), bool_neg=True)
+    model_rev = CNF(3, (128, 128, 128, 128,), bool_neg=False)
+    model_fwd = CNF(3, (128, 128, 128, 128,), bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -151,8 +151,8 @@ def training(batch_size, epochs):
 
             # plotting results
             f_ = f"{CKPT_DIR}/acrolein_{i}.npy"
-            u0 = jnp.linspace(-3., 3., 25)
-            u1 = jnp.linspace(-3., 3., 25)
+            u0 = jnp.linspace(-4., 4., 25)
+            u1 = jnp.linspace(-4., 4., 25)
             u0_, u1_ = jnp.meshgrid(u0, u1)
             u01t = lax.concatenate(
                 (jnp.expand_dims(u0_.ravel(), 1), jnp.expand_dims(u1_.ravel(), 1)), 1)
