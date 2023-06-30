@@ -167,7 +167,7 @@ def main(batch_size, epochs):
         zt0, logp_zt0 = NODE_rev(params, samples)
         logp_x = log_p_z0(zt0) - logp_zt0
         # return - 1.*jnp.mean(logp_x)
-        return -1.*jnp.mean(logp_x - log_true_rho)
+        return jnp.mean(logp_x - log_true_rho)
 
     @jax.jit
     def step(params, opt_state, batch):
