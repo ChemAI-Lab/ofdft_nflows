@@ -1,3 +1,4 @@
+import argparse
 from typing import Any, Union
 
 import jax
@@ -5,11 +6,8 @@ from jax import lax,  numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
-
-from flax.training import train_state, checkpoints, orbax_utils
-from flax.core import FrozenDict
-from orbax import checkpoint as orbax_checkpoint
 import optax
+from flax.training import checkpoints
 from distrax import MultivariateNormalDiag
 from distrax._src.distributions import distribution
 
@@ -72,7 +70,7 @@ def _plotting(rho_pred, rho_true, XY, _label: Any):
     plt.savefig(f'{FIG_DIR}/CNFrho_acrolein_{i}_KLrev.png')
 
 
-def main(batch_size, epochs):
+def training(batch_size, epochs):
     mean = jnp.zeros((3,))
     cov = 0.1 * jnp.ones((3,))
     prior_dist = MultivariateNormalDiag(mean, cov)
@@ -100,9 +98,6 @@ def main(batch_size, epochs):
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
-    restored_state = checkpoints.restore_checkpoint(
-        ckpt_dir=CKPT_DIR, target=params, step=0)
-
     @jax.jit
     def NODE_rev(params, batch): return neural_ode(
         params, batch, model_rev, -1., 0., 3)
@@ -114,7 +109,10 @@ def main(batch_size, epochs):
     optimizer = optax.adam(learning_rate=3e-4)
     opt_state = optimizer.init(params)
 
-    params = restored_state
+    # load prev parameters
+    # restored_state = checkpoints.restore_checkpoint(
+    # ckpt_dir=CKPT_DIR, target=params, step=0)
+    # params = restored_state
 
     def loss(params, samples):
         z0 = samples[:, :-1]
@@ -147,14 +145,12 @@ def main(batch_size, epochs):
 
         if i % 100 == 0:
 
-            f_ = f"{CKPT_DIR}/acrolein_{i}.npy"
-
+            # checkpointing model model
             checkpoints.save_checkpoint(
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-            png = jrnd.PRNGKey(1)
-            _, key = jrnd.split(png)
-
+            # plotting results
+            f_ = f"{CKPT_DIR}/acrolein_{i}.npy"
             u0 = jnp.linspace(-3., 3., 25)
             u1 = jnp.linspace(-3., 3., 25)
             u0_, u1_ = jnp.meshgrid(u0, u1)
@@ -180,15 +176,27 @@ def main(batch_size, epochs):
                 jnp.save(f_, results, allow_pickle=True)
                 _plotting(rho_pred, rho_true, (u0_, u1_), (f"{j}-{i}", u2j))
 
-    # print(jnp.load(f_, allow_pickle=True))
+
+def main():
+    parser = argparse.ArgumentParser(description="Density fitting training")
+    parser.add_argument("--epochs", type=int,
+                        default=10000, help="training epochs")
+    parser.add_argument("--bs", type=int, default=512, help="batch size")
+    args = parser.parse_args()
+
+    batch_size = args.bs
+    epochs = args.epochs
+
+    training(batch_size, epochs)
 
 
 if __name__ == '__main__':
+    main()
 
-    batch_size = 512
-    epochs = 10000
+    # batch_size = 512
+    # epochs = 10000
 
-    main(batch_size, epochs)
+    # main(batch_size, epochs)
 # https://www.molcas.org/documentation/manual/node28.html
 
 #   O  -1.808864  -0.137998  0.000000
