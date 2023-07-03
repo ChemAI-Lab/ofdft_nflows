@@ -17,6 +17,7 @@ from ofdft_normflows.dft_distrax import DFTDistribution
 
 import matplotlib.pyplot as plt
 
+BHOR = 1.8897259886  # 1AA to BHOR
 Array = Any
 KeyArray = Union[Array, prng.PRNGKeyArray]
 
@@ -63,6 +64,7 @@ def _plotting(rho_pred, rho_true, XY, _label: Any):
                       [0.477859,  -1.512556,  0.000000],
                       [2.688665,  -0.434186,  0.000000],
                       [1.880903,  1.213924,  0.000000]])
+    geom = geom*BHOR
     ax.scatter(geom[:, 0], geom[:, 1],  marker='o', color='k', s=35)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
@@ -106,13 +108,13 @@ def training(batch_size, epochs):
     def NODE_fwd(params, batch): return neural_ode(
         params, batch, model_fwd, 0., 1., 3)
 
-    optimizer = optax.adam(learning_rate=3e-4)
+    optimizer = optax.adam(learning_rate=1e-3)
     opt_state = optimizer.init(params)
 
     # load prev parameters
-    # restored_state = checkpoints.restore_checkpoint(
-    # ckpt_dir=CKPT_DIR, target=params, step=0)
-    # params = restored_state
+    restored_state = checkpoints.restore_checkpoint(
+        ckpt_dir=CKPT_DIR, target=params, step=0)
+    params = restored_state
 
     def loss(params, samples):
         z0 = samples[:, :-1]
@@ -131,7 +133,7 @@ def training(batch_size, epochs):
         return params, opt_state, loss_value
 
     loss0 = jnp.inf
-    for i in range(epochs+1):
+    for i in range(1000+1, 1000+epochs+1):
 
         batch = next(gen_batch)
         params, opt_state, loss_value = step(params, opt_state, batch)
@@ -151,8 +153,8 @@ def training(batch_size, epochs):
 
             # plotting results
             f_ = f"{CKPT_DIR}/acrolein_{i}.npy"
-            u0 = jnp.linspace(-4., 4., 25)
-            u1 = jnp.linspace(-4., 4., 25)
+            u0 = jnp.linspace(-5., 5., 25)
+            u1 = jnp.linspace(-5., 5., 25)
             u0_, u1_ = jnp.meshgrid(u0, u1)
             u01t = lax.concatenate(
                 (jnp.expand_dims(u0_.ravel(), 1), jnp.expand_dims(u1_.ravel(), 1)), 1)

@@ -7,6 +7,6 @@
 
 module load python/3.9.8 
 source $HOME/.virtualenvs/cnf_ofdft/bin/activate
-module load python/3.9.8 
+
 
 python acrolein_densitty_fitting_KLrev.py 
