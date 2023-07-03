@@ -179,6 +179,25 @@ def GaussianPotential1D(params: Any, u: Any, T: Callable,  params_pot: Any = Non
     return jnp.mean(y)
 
 
+@partial(jit,  static_argnums=(2, 3))
+def GaussianPotential1D_pot(params: Any, u: Any, T: Callable,  params_pot: Any = None) -> jax.Array:
+    if (params_pot is None):
+        params_pot = {'alpha': jnp.array([[1.], [2.]]),
+                      'beta': jnp.array([[-0.5], [1.]])}
+
+    # x = T(u)
+    x = T(params, u)
+
+    @jit
+    def _f(x: Array, params_pot: Any):
+        alpha, beta = params_pot['alpha'], params_pot['beta']
+        return -alpha*jnp.exp(-(x-beta)**2)
+
+    y = vmap(_f, in_axes=(None, 1))(x, params_pot)
+    y = jnp.sum(y, axis=-1).transpose()
+    return y
+
+
 @partial(jax.jit,  static_argnums=(3,))
 def Coulomb_potential(params: Any, u: Any, up: Any, T: Callable):
     x = T(params, u)
