@@ -1,20 +1,19 @@
-from functools import partial
-from typing import Any, Callable, Sequence, Optional, NewType, Union
+import os
+import argparse
+from typing import Any, Union
 
 import jax
-from jax import lax, random, vmap, scipy, numpy as jnp
-from jax.experimental.ode import odeint
+from jax import lax, numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
-import flax
-from flax import linen as nn
+from flax.training import checkpoints
 import optax
 from distrax import Normal
 
-from ofdft_normflows.functionals import _kinetic, GaussianPotential1D, Coulomb_potential
-from ofdft_normflows.cn_flows import Gen_CNF, neural_ode, CNFMLP
-from ofdft_normflows.flows import NormFlow
+from ofdft_normflows.functionals import _kinetic, GaussianPotential1D,  GaussianPotential1D_pot, Coulomb_potential
+from ofdft_normflows.cn_flows import neural_ode
+from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 
 import matplotlib.pyplot as plt
 
@@ -23,42 +22,50 @@ KeyArray = Union[Array, prng.PRNGKeyArray]
 
 jax.config.update("jax_enable_x64", True)
 
+CKPT_DIR = "Results/GP_pot"
+FIG_DIR = "Figures/GP_pot"
 
-def main(batch_size: int = 256, epochs: int = 100):
+
+def training(batch_size: int = 256, epochs: int = 100):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    # model = Gen_CNF(1)
-    model = CNFMLP(1, (100,))
+    model_rev = CNF(1, (128, 128, 128,), bool_neg=False)
+    model_fwd = CNF(1, (128, 128, 128,), bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 1)), jnp.ones((1, 1))), 1)
-    params = model.init(key, jnp.array(0.), test_inputs)
+    params = model_rev.init(key, jnp.array(0.), test_inputs)
 
-    def NODE(params, batch): return neural_ode(
-        params, batch, model, 0., 10., 1)
+    @jax.jit
+    def NODE_rev(params, batch): return neural_ode(
+        params, batch, model_rev, -1., 0., 1)
 
-    # model = NormFlow(10, 1)
-    # params = model.init(key, jnp.zeros((1, 1)))
-    # z, ldj = model.apply(params, jrnd
-    #                      .uniform(key, (2, 1)))
+    @jax.jit
+    def NODE_fwd(params, batch): return neural_ode(
+        params, batch, model_fwd, 0., 1., 1)
 
     t_functional = _kinetic('TF1D')
     v_functional = lambda *args: GaussianPotential1D(*args)
 
     prior_dist = Normal(jnp.zeros(1), 0.1*jnp.ones(1))
 
-    optimizer = optax.adam(learning_rate=1e-4)
+    optimizer = optax.adam(learning_rate=3e-4)
     opt_state = optimizer.init(params)
+
+    # load prev parameters
+    # restored_state = checkpoints.restore_checkpoint(
+    #     ckpt_dir=CKPT_DIR, target=params, step=0)
+    # params = restored_state
 
     @jax.jit
     def rho(params, samples):
         zt0 = samples[:, :1]
-        zt, logp_zt = NODE(params, samples)
-        logp_x = prior_dist.log_prob(zt0) - logp_zt
+        zt, logp_zt = NODE_fwd(params, samples)
+        logp_x = prior_dist.log_prob(zt0) + logp_zt
         return jnp.exp(logp_x)
 
     @jax.jit
     def T(params, samples):
-        zt, _ = NODE(params, samples)
+        zt, _ = NODE_fwd(params, samples)
         return zt
 
     @jax.jit
@@ -98,37 +105,55 @@ def main(batch_size: int = 256, epochs: int = 100):
             print(f'step {i}, loss: {loss_epoch}')
         if loss_epoch < loss0:
             params_opt, loss0 = params, loss_epoch
+            # checkpointing model model
+            checkpoints.save_checkpoint(
+                ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-    z = jnp.linspace(-4., 4., 1000)[:, jnp.newaxis]
-    logp_samples = prior_dist.log_prob(z)
-    samples = lax.concatenate((z, logp_samples), 1)
-    plt.plot(z, rho(params_opt, samples))
-    plt.plot(z, prior_dist.prob(z))
-    def T(params, x): return x
+        if i % 10 == 0:
+            zt = jnp.linspace(-4.5, 4.5, 1000)[:, jnp.newaxis]
+            zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
 
-    def f_test(x):
-        print(x.shape)
-        return jnp.sum(1./x, axis=-1)
+            z0, logp_diff_z0 = NODE_rev(params_opt, zt_and_logp_zt)
+            logp_x = prior_dist.log_prob(z0) - logp_diff_z0
+            rho_pred = logp_x  # jnp.exp(logp_x)
+            def model_identity(params, x): return x
+            def f_v(x): return GaussianPotential1D_pot(None, x, model_identity)
+            y_GP_pot = f_v(zt)
 
-    # f_v = vmap(GaussianPotential1D, in_axes=(None, 0, None))
-    # GP_pot = f_v(None, x[:, jnp.newaxis, :], T)
-    # plt.plot(x, GP_pot)
-    plt.savefig('GaussPot.png')
+            plt.figure(0)
+            plt.clf()
+            plt.title(f'epoch {i}')
+            plt.plot(zt, jnp.exp(rho_pred),
+                     color='tab:blue', label=r'$\rho(x)$')
+            plt.plot(zt, y_GP_pot,
+                     ls='--', color='k', label=r'$V_{GP}(x)$')
+            plt.xlabel('x')
+            plt.ylabel('Energy units')
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(f'{FIG_DIR}/rho_and_GP_pot_{i}.png')
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Density fitting training")
+    parser.add_argument("--epochs", type=int,
+                        default=20000, help="training epochs")
+    parser.add_argument("--bs", type=int, default=512, help="batch size")
+    args = parser.parse_args()
+
+    batch_size = args.bs
+    epochs = args.epochs
+
+    cwd = os.getcwd()
+    rwd = os.path.join(cwd, CKPT_DIR)
+    if not os.path.exists(rwd):
+        os.makedirs(rwd)
+    fwd = os.path.join(cwd, FIG_DIR)
+    if not os.path.exists(fwd):
+        os.makedirs(fwd)
+
+    training(batch_size, epochs)
 
 
 if __name__ == "__main__":
-    main(512, 1000)
-    # x = jnp.linspace(-4., 4., 1000)[:, jnp.newaxis]
-    # xv = x[:, jnp.newaxis, :]
-
-    # def T(params, x): return x
-
-    # def f_test(x):
-    #     print(x.shape)
-    #     return jnp.sum(1./x, axis=-1)
-
-    # f_v = vmap(GaussianPotential1D, in_axes=(None, 0, None))
-    # y = f_v(None, xv, T)
-    # print(y.shape)
-    # plt.plot(x, y)
-    # plt.savefig('1d_pot.png')
+    main()
