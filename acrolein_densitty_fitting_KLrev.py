@@ -95,8 +95,8 @@ def training(batch_size, epochs):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(3, (128, 128, 128, 128,), bool_neg=False)
-    model_fwd = CNF(3, (128, 128, 128, 128,), bool_neg=True)
+    model_rev = CNF(3, (256, 256, 256, 256,), bool_neg=False)
+    model_fwd = CNF(3, (256, 256, 256, 256,), bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -122,7 +122,7 @@ def training(batch_size, epochs):
         logp_x = prior_dist.log_prob(
             z0)[:, jnp.newaxis] + logp_zt  # check the sign
         logp_true = log_target_density(zt)
-        return jnp.linalg.norm(logp_x - logp_true)
+        return jnp.mean(logp_x - logp_true)
 
     # @jax.jit
     def step(params, opt_state, batch):
@@ -144,12 +144,10 @@ def training(batch_size, epochs):
 
         if i % 100 == 0:
             print(f'step {i}, loss: {loss_value}')
-
-        if i % 100 == 0:
-
             # checkpointing model model
             checkpoints.save_checkpoint(
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
+        if i % 100 == 0:
 
             # plotting results
             f_ = f"{CKPT_DIR}/acrolein_{i}.npy"
