@@ -94,7 +94,6 @@ def training(batch_size: int = 256, epochs: int = 100):
             samples = lax.concatenate((samples, logp_samples), 1)
             yield samples
 
-    output = pd.DataFrame()
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, 2*batch_size)
     loss0 = jnp.inf
