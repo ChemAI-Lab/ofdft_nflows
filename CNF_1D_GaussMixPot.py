@@ -31,8 +31,8 @@ def training(batch_size: int = 256, epochs: int = 100):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(1, (128, 128, 128,), bool_neg=False)
-    model_fwd = CNF(1, (128, 128, 128,), bool_neg=True)
+    model_rev = CNF(1, (96, 96,), bool_neg=False)
+    model_fwd = CNF(1, (96, 96,), bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 1)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -111,8 +111,8 @@ def training(batch_size: int = 256, epochs: int = 100):
             checkpoints.save_checkpoint(
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-        if i % 5 == 0:
-            zt = jnp.linspace(-4., 4., 1000)[:, jnp.newaxis]
+        if i % 10 == 0:
+            zt = jnp.linspace(-5., 5., 1000)[:, jnp.newaxis]
             zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
 
             z0, logp_diff_z0 = NODE_rev(params_opt, zt_and_logp_zt)
@@ -139,7 +139,7 @@ def training(batch_size: int = 256, epochs: int = 100):
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=100, help="training epochs")
+                        default=200, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     args = parser.parse_args()
 
