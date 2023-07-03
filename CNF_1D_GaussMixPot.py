@@ -22,6 +22,7 @@ KeyArray = Union[Array, prng.PRNGKeyArray]
 
 jax.config.update("jax_enable_x64", True)
 
+BHOR = 1.8897259886  # 1AA to BHOR
 CKPT_DIR = "Results/GP_pot"
 FIG_DIR = "Figures/GP_pot"
 
@@ -110,7 +111,7 @@ def training(batch_size: int = 256, epochs: int = 100):
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
         if i % 10 == 0:
-            zt = jnp.linspace(-4.5, 4.5, 1000)[:, jnp.newaxis]
+            zt = jnp.linspace(-4.5, 4.5, 1000)[:, jnp.newaxis]  # in AA
             zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
 
             z0, logp_diff_z0 = NODE_rev(params_opt, zt_and_logp_zt)
@@ -123,9 +124,9 @@ def training(batch_size: int = 256, epochs: int = 100):
             plt.figure(0)
             plt.clf()
             plt.title(f'epoch {i}')
-            plt.plot(zt, jnp.exp(rho_pred),
+            plt.plot(zt/BHOR, jnp.exp(rho_pred),
                      color='tab:blue', label=r'$\rho(x)$')
-            plt.plot(zt, y_GP_pot,
+            plt.plot(zt/BHOR, y_GP_pot,
                      ls='--', color='k', label=r'$V_{GP}(x)$')
             plt.xlabel('x')
             plt.ylabel('Energy units')
