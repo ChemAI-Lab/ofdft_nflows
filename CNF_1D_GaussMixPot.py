@@ -102,16 +102,17 @@ def training(batch_size: int = 256, epochs: int = 100):
         batch = next(gen_batches)
         params, opt_state, loss_value = step(params, opt_state, batch)
         loss_epoch, losses = loss_value
-        if i % 10 == 0:
+        if i % 5 == 0:
             print(f'step {i}, loss: {loss_epoch}')
+
         if loss_epoch < loss0:
             params_opt, loss0 = params, loss_epoch
             # checkpointing model model
             checkpoints.save_checkpoint(
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-        if i % 10 == 0:
-            zt = jnp.linspace(-4.5, 4.5, 1000)[:, jnp.newaxis]  # in AA
+        if i % 5 == 0:
+            zt = jnp.linspace(-4., 4., 1000)[:, jnp.newaxis]
             zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
 
             z0, logp_diff_z0 = NODE_rev(params_opt, zt_and_logp_zt)
@@ -124,7 +125,7 @@ def training(batch_size: int = 256, epochs: int = 100):
             plt.figure(0)
             plt.clf()
             plt.title(f'epoch {i}')
-            plt.plot(zt/BHOR, jnp.exp(rho_pred),
+            plt.plot(zt/BHOR, jnp.exp(rho_pred)*BHOR,
                      color='tab:blue', label=r'$\rho(x)$')
             plt.plot(zt/BHOR, y_GP_pot,
                      ls='--', color='k', label=r'$V_{GP}(x)$')
@@ -138,7 +139,7 @@ def training(batch_size: int = 256, epochs: int = 100):
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=20000, help="training epochs")
+                        default=100, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     args = parser.parse_args()
 

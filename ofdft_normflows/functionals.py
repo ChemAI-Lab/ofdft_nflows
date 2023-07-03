@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from jax import jit, vmap, hessian, jacrev, lax
 
 Array = jax.Array
+BHOR = 1.8897259886  # 1AA to BHOR
 
 
 @partial(jit,  static_argnums=(2,))
@@ -163,8 +164,8 @@ def thomas_fermi_1D(params: Any, u: Array, fun: callable) -> jax.Array:
 @partial(jit,  static_argnums=(2, 3))
 def GaussianPotential1D(params: Any, u: Any, T: Callable,  params_pot: Any = None) -> jax.Array:
     if (params_pot is None):
-        params_pot = {'alpha': jnp.array([[1.], [2.]]),
-                      'beta': jnp.array([[-0.5], [1.]])}
+        params_pot = {'alpha': jnp.array([[1.], [2.]]),  # Ha/electron
+                      'beta': jnp.array([[0.5], [-1.]])}  # BHOR
 
     # x = T(u)
     x = T(params, u)
@@ -182,8 +183,8 @@ def GaussianPotential1D(params: Any, u: Any, T: Callable,  params_pot: Any = Non
 @partial(jit,  static_argnums=(2, 3))
 def GaussianPotential1D_pot(params: Any, u: Any, T: Callable,  params_pot: Any = None) -> jax.Array:
     if (params_pot is None):
-        params_pot = {'alpha': jnp.array([[1.], [2.]]),
-                      'beta': jnp.array([[-0.5], [1.]])}
+        params_pot = {'alpha': jnp.array([[1.], [2.]]),  # Ha/electron
+                      'beta': jnp.array([[0.5], [-1.]])}  # BHOR
 
     # x = T(u)
     x = T(params, u)
