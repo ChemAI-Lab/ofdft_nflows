@@ -76,7 +76,7 @@ def training(batch_size: int = 256, epochs: int = 100):
         gauss_v = v_functional(params, u_samples, T)
         t = t_functional(params, u_samples, rho)
         c_v = Coulomb_potential(params, u_samples, up_samples, T)
-        return t + gauss_v + c_v, {"t": t, "v": gauss_v + c_v}
+        return t + gauss_v + c_v, {"t": t, "v": gauss_v, "c": c_v}
 
     @jax.jit
     def step(params, opt_state, batch):
@@ -94,6 +94,7 @@ def training(batch_size: int = 256, epochs: int = 100):
             samples = lax.concatenate((samples, logp_samples), 1)
             yield samples
 
+    output = pd.DataFrame()
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, 2*batch_size)
     loss0 = jnp.inf
@@ -102,8 +103,11 @@ def training(batch_size: int = 256, epochs: int = 100):
         batch = next(gen_batches)
         params, opt_state, loss_value = step(params, opt_state, batch)
         loss_epoch, losses = loss_value
+
         if i % 5 == 0:
-            print(f'step {i}, loss: {loss_epoch}')
+            _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}"
+            print(_s,
+                  file=open('loss_epochs_GPpot.txt', 'a'))
 
         if loss_epoch < loss0:
             params_opt, loss0 = params, loss_epoch
@@ -139,7 +143,7 @@ def training(batch_size: int = 256, epochs: int = 100):
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=200, help="training epochs")
+                        default=10, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     args = parser.parse_args()
 
