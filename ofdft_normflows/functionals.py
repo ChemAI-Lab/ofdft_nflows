@@ -143,8 +143,8 @@ def thomas_fermi(params: Any, u: Array, fun: callable) -> jax.Array:
 def thomas_fermi_1D(params: Any, u: Array, fun: callable) -> jax.Array:
     """_summary_
 
-    T_{\text{TF}}[\rho] &=& \frac{3}{10}(3\pi^2)^{2/3} \int ( \rho)^{5/3} dr \\
-    T_{\text{TF}}[\rho] = \mathbb{E}_{\rho} \left[ ( \rho)^{2/3} \right]
+    T_{\text{TF}}[\rho] &=& \frac{\pi^2}{12}\int ( \rho)^{} dr \\
+    T_{\text{TF}}[\rho] = \frac{\pi^2}{12}\mathbb{E}_{\rho} \left[ ( \rho)^{2} \right]
 
     Args:
         params (Any): _description_

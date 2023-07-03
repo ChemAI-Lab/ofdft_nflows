@@ -53,9 +53,9 @@ def training(batch_size: int = 256, epochs: int = 100):
     opt_state = optimizer.init(params)
 
     # load prev parameters
-    # restored_state = checkpoints.restore_checkpoint(
-    #     ckpt_dir=CKPT_DIR, target=params, step=0)
-    # params = restored_state
+    restored_state = checkpoints.restore_checkpoint(
+        ckpt_dir=CKPT_DIR, target=params, step=0)
+    params = restored_state
 
     @jax.jit
     def rho(params, samples):
