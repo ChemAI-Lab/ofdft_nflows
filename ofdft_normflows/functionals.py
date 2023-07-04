@@ -200,8 +200,17 @@ def GaussianPotential1D_pot(params: Any, u: Any, T: Callable,  params_pot: Any =
 
 
 @partial(jax.jit,  static_argnums=(3,))
-def Coulomb_potential(params: Any, u: Any, up: Any, T: Callable):
+def Coulomb_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
     x = T(params, u)
     xp = T(params, up)
     z = 1./jnp.linalg.norm(x-xp, axis=1)
+    return 0.5*jnp.mean(lax.expand_dims(z, [1]))
+
+
+@partial(jax.jit,  static_argnums=(3, 4,))
+def Hartree_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
+    x = T(params, u)
+    xp = T(params, up)
+    z = (x-xp)**2+eps
+    z = 1./(z**0.5)
     return 0.5*jnp.mean(lax.expand_dims(z, [1]))

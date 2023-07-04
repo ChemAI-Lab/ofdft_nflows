@@ -11,7 +11,7 @@ from flax.training import checkpoints
 import optax
 from distrax import Normal
 
-from ofdft_normflows.functionals import _kinetic, GaussianPotential1D,  GaussianPotential1D_pot, Coulomb_potential
+from ofdft_normflows.functionals import _kinetic, GaussianPotential1D,  GaussianPotential1D_pot, Coulomb_potential, Hartree_potential
 from ofdft_normflows.cn_flows import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 
@@ -75,7 +75,7 @@ def training(batch_size: int = 256, epochs: int = 100):
                                           :], u_samples[batch_size:, :]
         gauss_v = v_functional(params, u_samples, T)
         t = t_functional(params, u_samples, rho)
-        c_v = Coulomb_potential(params, u_samples, up_samples, T)
+        c_v = Hartree_potential(params, u_samples, up_samples, T)
         return t + gauss_v + c_v, {"t": t, "v": gauss_v, "c": c_v}
 
     @jax.jit
