@@ -98,7 +98,7 @@ def training(batch_size: int = 256, epochs: int = 100):
             logp_samples = prior_dist.log_prob(samples)
             samples1 = lax.concatenate((samples, logp_samples), 1)
 
-            yield lax.concatenate((samples0, samples1), 1)
+            yield lax.concatenate((samples0, samples1), 0)
 
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, batch_size)
