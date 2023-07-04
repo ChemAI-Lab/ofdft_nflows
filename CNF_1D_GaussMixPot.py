@@ -91,11 +91,17 @@ def training(batch_size: int = 256, epochs: int = 100):
             _, key = jrnd.split(key)
             samples = prior_dist.sample(seed=key, sample_shape=batch_size)
             logp_samples = prior_dist.log_prob(samples)
-            samples = lax.concatenate((samples, logp_samples), 1)
-            yield samples
+            samples0 = lax.concatenate((samples, logp_samples), 1)
+
+            _, key = jrnd.split(key)
+            samples = prior_dist.sample(seed=key, sample_shape=batch_size)
+            logp_samples = prior_dist.log_prob(samples)
+            samples1 = lax.concatenate((samples, logp_samples), 1)
+
+            yield lax.concatenate((samples0, samples1), 1)
 
     _, key = jrnd.split(key)
-    gen_batches = batches_generator(key, 2*batch_size)
+    gen_batches = batches_generator(key, batch_size)
     loss0 = jnp.inf
     for i in range(epochs+1):
 
