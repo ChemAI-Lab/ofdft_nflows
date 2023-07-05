@@ -117,12 +117,13 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
               'T': losses['t'], 'V': losses['v'], 'C': losses['c'],
               }
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
-        df.to_csv(f"{CKPT_DIR}/training_trajectory.csv", index=False)
+        df.to_csv(
+            f"{CKPT_DIR}/training_trajectory_Ne_{n_particles}.csv", index=False)
 
         if i % 5 == 0:
             _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}"
             print(_s,
-                  file=open('loss_epochs_GPpot.txt', 'a'))
+                  file=open(f"{CKPT_DIR}/loss_epochs_GPpot_Ne_{n_particles}.txt", 'a'))
 
         if loss_epoch < loss0:
             params_opt, loss0 = params, loss_epoch
@@ -130,7 +131,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
             checkpoints.save_checkpoint(
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-        if i % 10 == 0:
+        if i % 20 == 0:
             zt = jnp.linspace(-5., 5., 1000)[:, jnp.newaxis]
             zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
 
