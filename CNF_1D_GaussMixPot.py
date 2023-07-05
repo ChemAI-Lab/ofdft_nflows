@@ -1,6 +1,7 @@
 import os
 import argparse
 from typing import Any, Union
+import pandas as pd
 
 import jax
 from jax import lax, numpy as jnp
@@ -23,11 +24,11 @@ KeyArray = Union[Array, prng.PRNGKeyArray]
 jax.config.update("jax_enable_x64", True)
 
 BHOR = 1.8897259886  # 1AA to BHOR
-CKPT_DIR = "Results/GP_pot"
-FIG_DIR = "Figures/GP_pot"
+# CKPT_DIR = "Results/GP_pot"
+# FIG_DIR = "Figures/GP_pot"
 
 
-def training(batch_size: int = 256, epochs: int = 100):
+def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, bool_load_params: bool = False):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
@@ -53,16 +54,17 @@ def training(batch_size: int = 256, epochs: int = 100):
     opt_state = optimizer.init(params)
 
     # load prev parameters
-    restored_state = checkpoints.restore_checkpoint(
-        ckpt_dir=CKPT_DIR, target=params, step=0)
-    params = restored_state
+    if bool_load_params:
+        restored_state = checkpoints.restore_checkpoint(
+            ckpt_dir=CKPT_DIR, target=params, step=0)
+        params = restored_state
 
     @jax.jit
     def rho(params, samples):
         zt0 = samples[:, :1]
         zt, logp_zt = NODE_fwd(params, samples)
         logp_x = prior_dist.log_prob(zt0) + logp_zt
-        return jnp.exp(logp_x)
+        return n_particles*jnp.exp(logp_x)
 
     @jax.jit
     def T(params, samples):
@@ -103,11 +105,19 @@ def training(batch_size: int = 256, epochs: int = 100):
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, batch_size)
     loss0 = jnp.inf
+    df = pd.DataFrame()
     for i in range(epochs+1):
 
         batch = next(gen_batches)
         params, opt_state, loss_value = step(params, opt_state, batch)
         loss_epoch, losses = loss_value
+
+        r_ = {'epoch': i,
+              'E': loss_epoch,
+              'T': losses['t'], 'V': losses['v'], 'C': losses['c'],
+              }
+        df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
+        df.to_csv(f"{CKPT_DIR}/training_trajectory.csv", index=False)
 
         if i % 5 == 0:
             _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}"
@@ -133,13 +143,13 @@ def training(batch_size: int = 256, epochs: int = 100):
 
             plt.figure(0)
             plt.clf()
-            plt.title(f'epoch {i}')
-            plt.plot(zt/BHOR, jnp.exp(rho_pred)*BHOR,
+            plt.title(f'epoch {i}, E = {loss_epoch:.5f}')
+            plt.plot(zt, jnp.exp(rho_pred),
                      color='tab:blue', label=r'$\rho(x)$')
-            plt.plot(zt/BHOR, y_GP_pot,
+            plt.plot(zt, y_GP_pot,
                      ls='--', color='k', label=r'$V_{GP}(x)$')
-            plt.xlabel('x')
-            plt.ylabel('Energy units')
+            plt.xlabel('x [Bhor]')
+            # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
             plt.savefig(f'{FIG_DIR}/rho_and_GP_pot_{i}.png')
@@ -148,12 +158,22 @@ def training(batch_size: int = 256, epochs: int = 100):
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=10, help="training epochs")
+                        default=20, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
+    parser.add_argument("--params", type=bool, default=False,
+                        help="load pre-trained model")
+    parser.add_argument("--N", type=int, default=2, help="number of particles")
     args = parser.parse_args()
 
     batch_size = args.bs
     epochs = args.epochs
+    bool_params = args.params
+    n_particles = args.N
+
+    global CKPT_DIR
+    global FIG_DIR
+    CKPT_DIR = f"Results/GP_pot_Ne_{n_particles}"
+    FIG_DIR = f"Figures/GP_pot_Ne_{n_particles}"
 
     cwd = os.getcwd()
     rwd = os.path.join(cwd, CKPT_DIR)
@@ -163,7 +183,7 @@ def main():
     if not os.path.exists(fwd):
         os.makedirs(fwd)
 
-    training(batch_size, epochs)
+    training(n_particles, batch_size, epochs, bool_params)
 
 
 if __name__ == "__main__":
