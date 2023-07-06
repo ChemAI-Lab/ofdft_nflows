@@ -79,7 +79,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         t = t_functional(params, u_samples, rho)
         c_v = Hartree_potential(params, u_samples, up_samples, T)
         e = (n_particles**3)*t + n_particles*gauss_v + (n_particles**2)*c_v
-        return e, {"t": t, "v": gauss_v, "c": c_v}
+        return e, {"t": (n_particles**3)*t, "v": n_particles*gauss_v, "c": (n_particles**2)*c_v}
 
     @jax.jit
     def step(params, opt_state, batch):
@@ -146,8 +146,8 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
             plt.figure(0)
             plt.clf()
             plt.title(f'epoch {i}, E = {loss_epoch:.5f}')
-            plt.plot(zt, jnp.exp(rho_pred),
-                     color='tab:blue', label=r'$\rho(x)$')
+            plt.plot(zt, n_particles*jnp.exp(rho_pred),
+                     color='tab:blue', label=r'$N_{e}\;\rho(x)$')
             plt.plot(zt, y_GP_pot,
                      ls='--', color='k', label=r'$V_{GP}(x)$')
             plt.xlabel('x [Bhor]')
