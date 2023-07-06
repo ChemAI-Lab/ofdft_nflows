@@ -78,7 +78,8 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         gauss_v = v_functional(params, u_samples, T)
         t = t_functional(params, u_samples, rho)
         c_v = Hartree_potential(params, u_samples, up_samples, T)
-        return (n_particles**3)*t + n_particles*gauss_v + (n_particles**2)*c_v, {"t": t, "v": gauss_v, "c": c_v}
+        e = (n_particles**3)*t + n_particles*gauss_v + (n_particles**2)*c_v
+        return e, {"t": t, "v": gauss_v, "c": c_v}
 
     @jax.jit
     def step(params, opt_state, batch):
