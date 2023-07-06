@@ -64,7 +64,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         zt0 = samples[:, :1]
         zt, logp_zt = NODE_fwd(params, samples)
         logp_x = prior_dist.log_prob(zt0) + logp_zt
-        return n_particles*jnp.exp(logp_x)
+        return jnp.exp(logp_x)
 
     @jax.jit
     def T(params, samples):
@@ -78,7 +78,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         gauss_v = v_functional(params, u_samples, T)
         t = t_functional(params, u_samples, rho)
         c_v = Hartree_potential(params, u_samples, up_samples, T)
-        return t + gauss_v + c_v, {"t": t, "v": gauss_v, "c": c_v}
+        return (n_particles**3)*t + n_particles*gauss_v + (n_particles**2)*c_v, {"t": t, "v": gauss_v, "c": c_v}
 
     @jax.jit
     def step(params, opt_state, batch):
