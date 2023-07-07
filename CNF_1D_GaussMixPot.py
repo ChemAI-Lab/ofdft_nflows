@@ -28,6 +28,13 @@ BHOR = 1.8897259886  # 1AA to BHOR
 # FIG_DIR = "Figures/GP_pot"
 
 
+def load_true_results(n_particles: int):
+    import numpy as onp
+    d_ = f'Data_1D_GaussMixPot/true_rho_grid_Ne_{n_particles}.txt'
+    data = jnp.array(onp.loadtxt(d_))
+    return data
+
+
 def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, bool_load_params: bool = False):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
@@ -72,19 +79,19 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         return zt
 
     @jax.jit
-    def loss(params, u_samples):
+    def loss(params, u_samples, ci):
         u_samples, up_samples = u_samples[:batch_size,
                                           :], u_samples[batch_size:, :]
         gauss_v = v_functional(params, u_samples, T)
         t = t_functional(params, u_samples, rho)
         c_v = Hartree_potential(params, u_samples, up_samples, T)
-        e = (n_particles**3)*t + n_particles*gauss_v + (n_particles**2)*c_v
+        e = (n_particles**3)*t + ci*n_particles*gauss_v + (n_particles**2)*c_v
         return e, {"t": (n_particles**3)*t, "v": n_particles*gauss_v, "c": (n_particles**2)*c_v}
 
     @jax.jit
-    def step(params, opt_state, batch):
+    def step(params, opt_state, batch, ci):
         loss_value, grads = jax.value_and_grad(
-            loss, has_aux=True)(params, batch)
+            loss, has_aux=True)(params, batch, ci)
         updates, opt_state = optimizer.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
         return params, opt_state, loss_value
@@ -110,30 +117,39 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         z0, logp_diff_z0 = NODE_rev(params, zt_and_logp_zt)
         logp_x = prior_dist.log_prob(z0) - logp_diff_z0
         p_x = jnp.exp(logp_x)
-        return jnp.trapz(zt.ravel(), p_x.ravel(), zt[1, 0]-zt[0, 0])
+        return jnp.trapz(p_x.ravel(), zt.ravel(), jnp.abs(zt[1, 0]-zt[0, 0]))
 
-    _, key = jrnd.split(key)
-    gen_batches = batches_generator(key, batch_size)
     loss0 = jnp.inf
     df = pd.DataFrame()
+    _, key = jrnd.split(key)
+    gen_batches = batches_generator(key, batch_size)
+    cosine_decay_scheduler = optax.warmup_cosine_decay_schedule(
+        init_value=5.0,
+        peak_value=5.0,
+        warmup_steps=int(epochs/10),
+        decay_steps=epochs,
+        end_value=1.0,
+    )
+    x_and_rho_true = load_true_results(
+        n_particles)  # read results from JCTC paper
     for i in range(epochs+1):
-
+        ci = cosine_decay_scheduler(i)
         batch = next(gen_batches)
-        params, opt_state, loss_value = step(params, opt_state, batch)
+        params, opt_state, loss_value = step(params, opt_state, batch, ci)
         loss_epoch, losses = loss_value
 
         norm_integral = _integral(params)
 
         r_ = {'epoch': i,
               'E': loss_epoch,
-              'T': losses['t'], 'V': losses['v'], 'C': losses['c'], 'I': norm_integral
+              'T': losses['t'], 'V': losses['v'], 'C': losses['c'], 'I': norm_integral, 'ci': ci,
               }
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
         df.to_csv(
             f"{CKPT_DIR}/training_trajectory_Ne_{n_particles}.csv", index=False)
 
         if i % 5 == 0:
-            _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}, , I: {norm_integral:.4f}"
+            _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}, I: {norm_integral:.4f}, ci: {ci:.5f}"
             print(_s,
                   file=open(f"{CKPT_DIR}/loss_epochs_GPpot_Ne_{n_particles}.txt", 'a'))
 
@@ -157,8 +173,10 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
             plt.figure(0)
             plt.clf()
             plt.title(f'epoch {i}, E = {loss_epoch:.5f}')
+            plt.plot(x_and_rho_true[:, 0], x_and_rho_true[:, 1],
+                     color='k', ls=":", label=r"$\hat{\rho}(x)$")
             plt.plot(zt, n_particles*jnp.exp(rho_pred),
-                     color='tab:blue', label=r'$N_{e}\;\rho(x)$')
+                     color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
             plt.plot(zt, y_GP_pot,
                      ls='--', color='k', label=r'$V_{GP}(x)$')
             plt.xlabel('x [Bhor]')
