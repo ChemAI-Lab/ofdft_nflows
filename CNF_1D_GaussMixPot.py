@@ -103,6 +103,15 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 
             yield lax.concatenate((samples0, samples1), 0)
 
+    @jax.jit
+    def _integral(params):
+        zt = jnp.linspace(-5., 5., num=512)[:, jnp.newaxis]
+        zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
+        z0, logp_diff_z0 = NODE_rev(params, zt_and_logp_zt)
+        logp_x = prior_dist.log_prob(z0) - logp_diff_z0
+        p_x = jnp.exp(logp_x)
+        return jnp.trapz(zt.ravel(), p_x.ravel(), zt[1, 0]-zt[0, 0])
+
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, batch_size)
     loss0 = jnp.inf
@@ -113,16 +122,18 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         params, opt_state, loss_value = step(params, opt_state, batch)
         loss_epoch, losses = loss_value
 
+        norm_integral = _integral(params)
+
         r_ = {'epoch': i,
               'E': loss_epoch,
-              'T': losses['t'], 'V': losses['v'], 'C': losses['c'],
+              'T': losses['t'], 'V': losses['v'], 'C': losses['c'], 'I': norm_integral
               }
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
         df.to_csv(
             f"{CKPT_DIR}/training_trajectory_Ne_{n_particles}.csv", index=False)
 
         if i % 5 == 0:
-            _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}"
+            _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}, , I: {norm_integral:.4f}"
             print(_s,
                   file=open(f"{CKPT_DIR}/loss_epochs_GPpot_Ne_{n_particles}.txt", 'a'))
 
