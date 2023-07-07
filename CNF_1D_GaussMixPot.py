@@ -15,6 +15,7 @@ from distrax import Normal
 from ofdft_normflows.functionals import _kinetic, GaussianPotential1D,  GaussianPotential1D_pot, Coulomb_potential, Hartree_potential
 from ofdft_normflows.cn_flows import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
+from ofdft_normflows.cn_flows import Gen_CNFRicky as CNFRicky
 
 import matplotlib.pyplot as plt
 
@@ -39,8 +40,10 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(1, (96, 96,), bool_neg=False)
-    model_fwd = CNF(1, (96, 96,), bool_neg=True)
+    # model_rev = CNF(1, (96, 96,), bool_neg=False)
+    # model_fwd = CNF(1, (96, 96,), bool_neg=True)
+    model_rev = CNFRicky(1, bool_neg=False)
+    model_fwd = CNFRicky(1, bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 1)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -117,7 +120,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         z0, logp_diff_z0 = NODE_rev(params, zt_and_logp_zt)
         logp_x = prior_dist.log_prob(z0) - logp_diff_z0
         p_x = jnp.exp(logp_x)
-        return jnp.trapz(p_x.ravel(), zt.ravel(), jnp.abs(zt[1, 0]-zt[0, 0]))
+        return jnp.trapz(p_x.ravel(), zt.ravel(), jnp.abs(zt[1, 0]-zt[0, 0])), jnp.mean(logp_diff_z0)
 
     loss0 = jnp.inf
     df = pd.DataFrame()
@@ -126,7 +129,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     cosine_decay_scheduler = optax.warmup_cosine_decay_schedule(
         init_value=5.0,
         peak_value=5.0,
-        warmup_steps=int(epochs/10),
+        warmup_steps=1,
         decay_steps=epochs,
         end_value=1.0,
     )
@@ -138,18 +141,20 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         params, opt_state, loss_value = step(params, opt_state, batch, ci)
         loss_epoch, losses = loss_value
 
-        norm_integral = _integral(params)
-
+        norm_integral, log_det_Jac = _integral(params)
+        mean_energy = losses['t']+losses['v']+losses['c']
         r_ = {'epoch': i,
-              'E': loss_epoch,
-              'T': losses['t'], 'V': losses['v'], 'C': losses['c'], 'I': norm_integral, 'ci': ci,
+              'L': loss_epoch, 'E': mean_energy,
+              'T': losses['t'], 'V': losses['v'], 'C': losses['c'], 'I': norm_integral, 'ci': ci, 'logDetJac': log_det_Jac
               }
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
         df.to_csv(
             f"{CKPT_DIR}/training_trajectory_Ne_{n_particles}.csv", index=False)
 
         if i % 5 == 0:
-            _s = f"step {i}, E: {loss_epoch:.5f}, T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}, I: {norm_integral:.4f}, ci: {ci:.5f}"
+            _s = f"step {i}, L: {loss_epoch:.5f}, E:{mean_energy:.5f}\
+            T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}, \
+            I: {norm_integral:.4f}, ci: {ci:.5f}, logDetJac: {log_det_Jac:.4}"
             print(_s,
                   file=open(f"{CKPT_DIR}/loss_epochs_GPpot_Ne_{n_particles}.txt", 'a'))
 
@@ -172,7 +177,8 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 
             plt.figure(0)
             plt.clf()
-            plt.title(f'epoch {i}, E = {loss_epoch:.5f}')
+            plt.title(
+                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}')
             plt.plot(x_and_rho_true[:, 0], x_and_rho_true[:, 1],
                      color='k', ls=":", label=r"$\hat{\rho}(x)$")
             plt.plot(zt, n_particles*jnp.exp(rho_pred),
@@ -189,7 +195,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=20, help="training epochs")
+                        default=500, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")

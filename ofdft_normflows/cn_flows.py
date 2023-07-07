@@ -124,11 +124,11 @@ class SimpleMLP(nn.Module):
         self.layers = [nn.Dense(feat)
                        for feat in self.features]  # [1:]
         self.last_layer = nn.Dense(
-            self.in_out_dims,
-            kernel_init=jax.nn.initializers.zeros,
-            bias_init=jax.nn.initializers.zeros)
-        # kernel_init=jax.nn.initializers.constant(1E-3),
-        # bias_init=jax.nn.initializers.constant(1E-3))
+            self.in_out_dims)  # ,
+        # kernel_init=jax.nn.initializers.zeros,
+        # bias_init=jax.nn.initializers.zeros)
+        # kernel_init=jax.nn.initializers.constant(1E-2),
+        # bias_init=jax.nn.initializers.constant(1E-2))
 
     @nn.compact
     def __call__(self, t, samples):
