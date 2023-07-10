@@ -155,8 +155,8 @@ def thomas_fermi_1D(params: Any, u: Array, fun: callable) -> jax.Array:
         jax.Array: _description_
     """
     rho_ = fun(params, u)
-    val = (rho_)**2
-    l = (jnp.pi**2/12)
+    val = rho_*rho_
+    l = (jnp.pi*jnp.pi)/12.
     return l*val
 # ------------------------------------------------------------------------------------------------------------
 
@@ -173,7 +173,7 @@ def GaussianPotential1D(params: Any, u: Any, T: Callable,  params_pot: Any = Non
     @jit
     def _f(x: Array, params_pot: Any):
         alpha, beta = params_pot['alpha'], params_pot['beta']
-        return -alpha*jnp.exp(-(x-beta)**2)
+        return -alpha*jnp.exp(-(x-beta)*(x-beta))  # **2 OLD
 
     y = vmap(_f, in_axes=(None, 1))(x, params_pot)
     y = jnp.sum(y, axis=-1).transpose()
@@ -192,7 +192,7 @@ def GaussianPotential1D_pot(params: Any, u: Any, T: Callable,  params_pot: Any =
     @jit
     def _f(x: Array, params_pot: Any):
         alpha, beta = params_pot['alpha'], params_pot['beta']
-        return -alpha*jnp.exp(-(x-beta)**2)
+        return -alpha*jnp.exp(-(x-beta)*(x-beta))  # **2 OLD
 
     y = vmap(_f, in_axes=(None, 1))(x, params_pot)
     y = jnp.sum(y, axis=-1).transpose()
