@@ -152,8 +152,6 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     for i in range(epochs+1):
         ci = 1.  # cosine_decay_scheduler(i)
         batch = next(gen_batches)
-        print(loss(params, batch, ci))
-        assert 0
         params, opt_state, loss_value = step(params, opt_state, batch, ci)
         loss_epoch, losses = loss_value
 
