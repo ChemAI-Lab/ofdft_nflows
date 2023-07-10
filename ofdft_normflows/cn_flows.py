@@ -140,8 +140,9 @@ class SimpleMLP(nn.Module):
 
         for i, lyr in enumerate(self.layers):
             z = lyr(z)
-            z = nn.softplus(1.*z) / \
-                1.  # if it takes too long remove the 100.
+            z = nn.tanh(z)
+            # z = nn.softplus(1.*z) / \
+            # 1.  # if it takes too long remove the 100.
 
         value = self.last_layer(z)
         return value[0]

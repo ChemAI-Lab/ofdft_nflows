@@ -89,7 +89,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         t = t_functional(params, u_samples, rho)
         c_v = Hartree_potential(params, u_samples, up_samples, T)
         e = (n_particles**3)*t + ci*n_particles*gauss_v + (n_particles**2)*c_v
-        return e, {"t": (n_particles**3)*t, "v": n_particles*gauss_v, "c": (n_particles**2)*c_v}
+        return jnp.mean(e), {"t": (n_particles**3)*jnp.mean(t), "v": n_particles*jnp.mean(gauss_v), "c": (n_particles**2)*jnp.mean(c_v)}
 
     @jax.jit
     def step(params, opt_state, batch, ci):
@@ -136,8 +136,12 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     x_and_rho_true = load_true_results(
         n_particles)  # read results from JCTC paper
     for i in range(epochs+1):
-        ci = cosine_decay_scheduler(i)
+        ci = 1.  # cosine_decay_scheduler(i)
         batch = next(gen_batches)
+        a = loss(params, batch, ci)
+        print(a[0])
+        print(a[1])
+        assert 0
         params, opt_state, loss_value = step(params, opt_state, batch, ci)
         loss_epoch, losses = loss_value
 
@@ -195,7 +199,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=500, help="training epochs")
+                        default=2500, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")

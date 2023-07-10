@@ -157,7 +157,7 @@ def thomas_fermi_1D(params: Any, u: Array, fun: callable) -> jax.Array:
     rho_ = fun(params, u)
     val = (rho_)**2
     l = (jnp.pi**2/12)
-    return l*jnp.mean(val)
+    return l*val
 # ------------------------------------------------------------------------------------------------------------
 
 
@@ -177,7 +177,7 @@ def GaussianPotential1D(params: Any, u: Any, T: Callable,  params_pot: Any = Non
 
     y = vmap(_f, in_axes=(None, 1))(x, params_pot)
     y = jnp.sum(y, axis=-1).transpose()
-    return jnp.mean(y)
+    return y
 
 
 @partial(jit,  static_argnums=(2, 3))
@@ -204,7 +204,7 @@ def Coulomb_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
     x = T(params, u)
     xp = T(params, up)
     z = 1./jnp.linalg.norm(x-xp, axis=1)
-    return 0.5*jnp.mean(lax.expand_dims(z, [1]))
+    return 0.5*z
 
 
 @partial(jax.jit,  static_argnums=(3, 4,))
@@ -213,4 +213,4 @@ def Hartree_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
     xp = T(params, up)
     z = (x-xp)**2+eps
     z = 1./(z**0.5)
-    return 0.5*jnp.mean(lax.expand_dims(z, [1]))
+    return 0.5*z
