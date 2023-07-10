@@ -73,8 +73,8 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     def rho(params, samples):
         zt0 = samples[:, :1]
         zt, logp_zt = NODE_fwd(params, samples)
-        logp_x = prior_dist.log_prob(zt0) + logp_zt
-        return jnp.exp(logp_x)
+        # logp_x = prior_dist.log_prob(zt0) + logp_zt
+        return jnp.exp(logp_zt)  # logp_x
 
     @jax.jit
     def T(params, samples):
