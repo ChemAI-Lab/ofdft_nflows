@@ -29,6 +29,28 @@ BHOR = 1.8897259886  # 1AA to BHOR
 # FIG_DIR = "Figures/GP_pot"
 
 
+def get_scheduler(epochs: int, type: str = 'zero'):
+    if type == 'zero':
+        return optax.constant_schedule(0.0)
+    elif type == 'one':
+        return optax.constant_schedule(1.)
+    elif type == 'cos_deacay':
+        return optax.warmup_cosine_decay_schedule(
+            init_value=.0,
+            peak_value=1.0,
+            warmup_steps=1,
+            decay_steps=epochs,
+            end_value=1.0,
+        )
+    elif type == 'mix':
+        constant_scheduler_min = optax.constant_schedule(0.0)
+        cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
+                                                                div_factor=50., final_div_factor=1.)
+        constant_scheduler_max = optax.constant_schedule(1.0)
+        return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
+                                     constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
+
+
 def load_true_results(n_particles: int):
     import numpy as onp
     d_ = f'Data_1D_GaussMixPot/true_rho_grid_Ne_{n_particles}.txt'
@@ -36,7 +58,7 @@ def load_true_results(n_particles: int):
     return data
 
 
-def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, bool_load_params: bool = False):
+def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, bool_load_params: bool = False, scheduler_type: str = 'zero'):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
@@ -132,17 +154,12 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     df = pd.DataFrame()
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, batch_size)
-    cosine_decay_scheduler = optax.warmup_cosine_decay_schedule(
-        init_value=5.0,
-        peak_value=5.0,
-        warmup_steps=1,
-        decay_steps=epochs,
-        end_value=1.0,
-    )
+    scheduler = get_scheduler(epochs, scheduler_type)
     x_and_rho_true = load_true_results(
         n_particles)  # read results from JCTC paper
+
     for i in range(epochs+1):
-        ci = 0.  # cosine_decay_scheduler(i)
+        ci = scheduler(i)
         batch = next(gen_batches)
         params, opt_state, loss_value = step(params, opt_state, batch, ci)
         loss_epoch, losses = loss_value
@@ -201,22 +218,25 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=500, help="training epochs")
+                        default=1500, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
     parser.add_argument("--N", type=int, default=1, help="number of particles")
+    parser.add_argument("--sched", type=str, default='zero',
+                        help="Hartree integral scheduler")
     args = parser.parse_args()
 
     batch_size = args.bs
     epochs = args.epochs
     bool_params = args.params
     n_particles = args.N
+    scheduler_type = args.sched
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/GP_pot_Ne_{n_particles}"
-    FIG_DIR = f"Figures/GP_pot_Ne_{n_particles}"
+    CKPT_DIR = f"Results/GP_pot_Ne_{n_particles}_Hsched_{scheduler_type}"
+    FIG_DIR = f"Figures/GP_pot_Ne_{n_particles}_Hsched_{scheduler_type}"
 
     cwd = os.getcwd()
     rwd = os.path.join(cwd, CKPT_DIR)
@@ -226,7 +246,7 @@ def main():
     if not os.path.exists(fwd):
         os.makedirs(fwd)
 
-    training(n_particles, batch_size, epochs, bool_params)
+    training(n_particles, batch_size, epochs, bool_params, scheduler_type)
 
 
 if __name__ == "__main__":
