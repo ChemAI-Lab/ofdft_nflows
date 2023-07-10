@@ -4,7 +4,7 @@ from typing import Any, Union
 import pandas as pd
 
 import jax
-from jax import lax, numpy as jnp
+from jax import lax, vmap, numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
@@ -40,10 +40,10 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    # model_rev = CNF(1, (96, 96,), bool_neg=False)
-    # model_fwd = CNF(1, (96, 96,), bool_neg=True)
-    model_rev = CNFRicky(1, bool_neg=False)
-    model_fwd = CNFRicky(1, bool_neg=True)
+    model_rev = CNF(1, (512, 512, 512, 512,), bool_neg=False)
+    model_fwd = CNF(1, (512, 512, 512, 512,), bool_neg=True)
+    # model_rev = CNFRicky(1, bool_neg=False)
+    # model_fwd = CNFRicky(1, bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 1)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -58,7 +58,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     t_functional = _kinetic('TF1D')
     v_functional = lambda *args: GaussianPotential1D(*args)
 
-    prior_dist = Normal(jnp.zeros(1), 0.1*jnp.ones(1))
+    prior_dist = Normal(jnp.zeros(1), 1.*jnp.ones(1))
 
     optimizer = optax.adam(learning_rate=3e-4)
     opt_state = optimizer.init(params)
@@ -83,11 +83,11 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 
     @jax.jit
     def loss(params, u_samples, ci):
-        u_samples, up_samples = u_samples[:batch_size,
-                                          :], u_samples[batch_size:, :]
-        gauss_v = v_functional(params, u_samples, T)
-        t = t_functional(params, u_samples, rho)
-        c_v = Hartree_potential(params, u_samples, up_samples, T)
+        # u_samples, up_samples = u_samples[:batch_size,
+        #   :], u_samples[batch_size:, :]
+        gauss_v = v_functional(params, u_samples[0], T)
+        t = t_functional(params, u_samples[1], rho)
+        c_v = Hartree_potential(params, u_samples[2], u_samples[3], T)
         e = (n_particles**3)*t + ci*n_particles*gauss_v + (n_particles**2)*c_v
         return jnp.mean(e), {"t": (n_particles**3)*jnp.mean(t), "v": n_particles*jnp.mean(gauss_v), "c": (n_particles**2)*jnp.mean(c_v)}
 
@@ -113,6 +113,20 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 
             yield lax.concatenate((samples0, samples1), 0)
 
+    def batches_generator_vmap(key: prng.PRNGKeyArray, batch_size: int):
+        @jax.jit
+        def f_sample(seed): return prior_dist.sample(
+            seed=seed, sample_shape=batch_size)
+        while True:
+            _, key = jrnd.split(key, 2)
+            keys = jrnd.split(key, 4)
+            samples = vmap(f_sample, in_axes=(0,))(
+                keys)
+            logp_samples = prior_dist.log_prob(samples)
+            samples0 = lax.concatenate((samples, logp_samples), 2)
+
+            yield samples0
+
     @jax.jit
     def _integral(params):
         zt = jnp.linspace(-5., 5., num=512)[:, jnp.newaxis]
@@ -125,7 +139,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     loss0 = jnp.inf
     df = pd.DataFrame()
     _, key = jrnd.split(key)
-    gen_batches = batches_generator(key, batch_size)
+    gen_batches = batches_generator_vmap(key, batch_size)
     cosine_decay_scheduler = optax.warmup_cosine_decay_schedule(
         init_value=5.0,
         peak_value=5.0,
@@ -138,9 +152,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
     for i in range(epochs+1):
         ci = 1.  # cosine_decay_scheduler(i)
         batch = next(gen_batches)
-        a = loss(params, batch, ci)
-        print(a[0])
-        print(a[1])
+        print(loss(params, batch, ci))
         assert 0
         params, opt_state, loss_value = step(params, opt_state, batch, ci)
         loss_epoch, losses = loss_value
