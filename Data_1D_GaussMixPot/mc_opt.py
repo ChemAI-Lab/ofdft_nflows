@@ -150,6 +150,12 @@ def simpleOpt(rho):
 
 # rho_gauss = norm.pdf(x)
 
+def load_true_results(n_particles: int):
+    import numpy as onp
+    d_ = f'Data_1D_GaussMixPot/true_rho_grid_Ne_{n_particles}.txt'
+    data = np.array(onp.loadtxt(d_))
+    return data
+
 
 def f(x, xp):
     z = np.sqrt((x-xp)**2)
@@ -157,24 +163,57 @@ def f(x, xp):
     return a/(z + 1E-4)
 
 
-yy = f(x.reshape(-1, 1), x.reshape(1, -1))
-integral = simps([simps(yy_x, x) for yy_x in yy], x)
-print(integral)
+# yy = f(x.reshape(-1, 1), x.reshape(1, -1))
+# integral = simps([simps(yy_x, x) for yy_x in yy], x)
+# print(integral)
+# vh = []
+# for xi in x:
+#     i0 = np.where(x != xi)[0]
+#     z = np.sqrt((x[i0]-xi)**2)
+#     a = norm.pdf(x[i0])
+#     int_ = a/(z)
+#     integ_ = simps(int_, x[i0])
+#     vh.append(integ_)
+
+# # plt.scatter(x, norm.pdf(x), label=r'$\rho(x)$')
+# plt.scatter(x, np.array(vh), label=r'$V_{H}(x)$')
+# # plt.scatter(x, np.array(vh)*norm.pdf(x),
+# # label=r'$V_{H}(x) \times \rho(x)$')
+# plt.legend()
+# plt.show()
+
+
+def load_true_results(n_particles: int):
+    import numpy as onp
+    d_ = f'Data_1D_GaussMixPot/true_rho_grid_Ne_{n_particles}.txt'
+    data = np.array(onp.loadtxt(d_))
+    return data
+
+
+data = load_true_results(1)
+x = data[:, 0]
+rho = data[:, 1]
 vh = []
 for xi in x:
-    z = np.sqrt((x-xi)**2 + 1E-7)
-    a = norm.pdf(x)
+    i0 = np.where(x != xi)[0]
+    z = np.sqrt((x[i0]-xi)**2)
+    a = rho[i0]
     int_ = a/(z)
-    integ_ = simps(int_, x)
+    integ_ = simps(int_, x[i0])
     vh.append(integ_)
+vh = np.array(vh)
 
-plt.scatter(x, norm.pdf(x), label=r'$\rho(x)$')
-plt.scatter(x, np.array(vh), label=r'$V_{H}(x)$')
-plt.scatter(x, np.array(vh)*norm.pdf(x),
-            label=r'$V_{H}(x) \times \rho(x)$')
+plt.scatter(x, rho, label=r'$\rho(x)$')
+plt.scatter(x, vh, label=r'$V_{H}(x)$')
+v = - 1.0 * np.exp(-(x-0.5)**2) - 2.0 * np.exp(-(x + 1)**2)
+plt.scatter(x, v, label=r'$V(x)$')
+plt.scatter(x, v + vh, label=r'$V(x) + V_{H}(x)$')
+
+# plt.scatter(x, np.array(vh)*norm.pdf(x),
+# label=r'$V_{H}(x) \times \rho(x)$')
 plt.legend()
+plt.tight_layout()
 plt.show()
-
 # for i in range(n_steps):
 #     rand_ind = np.random.randint(1024)
 #     rand_step = np.random.uniform(-max_step, max_step)

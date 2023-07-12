@@ -143,7 +143,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
 
     @jax.jit
     def _integral(params):
-        zt = jnp.linspace(-5., 5., num=512)[:, jnp.newaxis]
+        zt = jnp.linspace(-5., 5., num=1024)[:, jnp.newaxis]
         zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
         z0, logp_diff_z0 = NODE_rev(params, zt_and_logp_zt)
         logp_x = prior_dist.log_prob(z0) - logp_diff_z0
@@ -168,14 +168,15 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
         mean_energy = losses['t']+losses['v']+losses['c']
         r_ = {'epoch': i,
               'L': loss_epoch, 'E': mean_energy,
-              'T': losses['t'], 'V': losses['v'], 'C': losses['c'], 'I': norm_integral, 'ci': ci, 'logDetJac': log_det_Jac
+              'T': losses['t'], 'V': losses['v'], 'C': losses['c'],
+              'I': norm_integral, 'ci': ci, 'logDetJac': log_det_Jac
               }
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
         df.to_csv(
             f"{CKPT_DIR}/training_trajectory_Ne_{n_particles}.csv", index=False)
 
         if i % 5 == 0:
-            _s = f"step {i}, L: {loss_epoch:.5f}, E:{mean_energy:.5f}\
+            _s = f"step {i}, L: {loss_epoch:.3f}, E:{mean_energy:.3f}\
             T: {losses['t']:.5f}, V: {losses['v']:.5f}, C: {losses['c']:.5f}, \
             I: {norm_integral:.4f}, ci: {ci:.5f}, logDetJac: {log_det_Jac:.4}"
             print(_s,
@@ -201,7 +202,7 @@ def training(n_particles: int = 2, batch_size: int = 256, epochs: int = 100, boo
             plt.figure(0)
             plt.clf()
             plt.title(
-                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}')
+                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, ci = {ci:.3f}')
             plt.plot(x_and_rho_true[:, 0], x_and_rho_true[:, 1],
                      color='k', ls=":", label=r"$\hat{\rho}(x)$")
             plt.plot(zt, n_particles*jnp.exp(rho_pred),
@@ -250,4 +251,16 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    epochs = 500
+    constant_scheduler_min = optax.constant_schedule(0.0)
+    cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
+                                                            div_factor=50., final_div_factor=1.)
+    constant_scheduler_max = optax.constant_schedule(1.0)
+    scheduler = optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
+                                      constant_scheduler_max], boundaries=[epochs/3, 2*epochs/3])
+
+    ci = [scheduler(i) for i in range(epochs)]
+
+    plt.plot(ci)
+    plt.show()
