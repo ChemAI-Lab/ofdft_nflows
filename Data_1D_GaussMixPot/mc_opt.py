@@ -138,9 +138,9 @@ def simpleOpt(rho):
             print(i, E, np.sum(pot - mu))
     # np.savetxt('true_rho.dat', rho)
     # np.savetxt('true_pot.dat', v + hartree(rho))
-    plt.plot(x, v, label=r'$V(x)$')
-    plt.plot(x, rho, label=r'$\rho(x)$')
-    plt.plot(x, hartree(rho), label=r'$V_{H}(x)$')
+    plt.scatter(x, v, label=r'$V(x)$')
+    plt.scatter(x, rho, label=r'$\rho(x)$')
+    plt.scatter(x, hartree(rho), label=r'$V_{H}(x)$')
     plt.legend()
     plt.savefig(f'true_density_N_{n_elec}.png')
 
@@ -162,16 +162,16 @@ integral = simps([simps(yy_x, x) for yy_x in yy], x)
 print(integral)
 vh = []
 for xi in x:
-    z = np.sqrt((x-xi)**2)
+    z = np.sqrt((x-xi)**2 + 1E-7)
     a = norm.pdf(x)
-    int_ = a/(z + 1E-4)
+    int_ = a/(z)
     integ_ = simps(int_, x)
     vh.append(integ_)
 
-plt.plot(x, 100*norm.pdf(x), label=r'$100\times\rho(x)$')
-plt.plot(x, np.array(vh), ls='--', label=r'$V_{H}(x)$')
-plt.plot(x, np.array(vh)*norm.pdf(x), ls=':',
-         label=r'$V_{H}(x) \times \rho(x)$')
+plt.scatter(x, norm.pdf(x), label=r'$\rho(x)$')
+plt.scatter(x, np.array(vh), label=r'$V_{H}(x)$')
+plt.scatter(x, np.array(vh)*norm.pdf(x),
+            label=r'$V_{H}(x) \times \rho(x)$')
 plt.legend()
 plt.show()
 
@@ -192,5 +192,5 @@ plt.show()
 #         old_E = trial_E
 #     if i % 10000 == 0:
 #         print("Step: {}, Energy: {}".format(i, old_E))
-# plt.plot(x, rho)
+# plt.scatter(x, rho)
 # plt.show()
