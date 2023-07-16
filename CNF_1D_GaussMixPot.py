@@ -237,7 +237,7 @@ def main():
     global CKPT_DIR
     global FIG_DIR
     CKPT_DIR = f"Results/GP_pot_Ne_{n_particles}_Hsched_{scheduler_type}"
-    FIG_DIR = f"Figures/GP_pot_Ne_{n_particles}_Hsched_{scheduler_type}"
+    FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()
     rwd = os.path.join(cwd, CKPT_DIR)
