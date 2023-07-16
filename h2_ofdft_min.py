@@ -122,7 +122,7 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
     def loss(params, u_samples, ci):
         u_samples, up_samples = u_samples[:batch_size,
                                           :], u_samples[batch_size:, :]
-        t = (n_particles**3)*t_functional(params, u_samples, rho)
+        t = (n_particles**(5/3))*t_functional(params, u_samples, rho)
         c_v = (n_particles**2) * \
             Hartree_potential(params, u_samples, up_samples, T)
         nuc_v = (n_particles)*v_functional(params, u_samples, T, mol)
