@@ -92,7 +92,7 @@ def kinetic(params: Any, u: Any, rho: Callable) -> jax.Array:
     # return -0.5*jnp.mean(lap_val)
     rho_val = rho(params, u)
     rho_val = 1./(rho_val+1E-4)**0.5  # for numerical stability
-    return -0.5*jnp.mean(jnp.multiply(rho_val, lap_val))
+    return -0.5*jnp.multiply(rho_val, lap_val)
 
 
 @partial(jit,  static_argnums=(2,))
@@ -115,7 +115,7 @@ def weizsacker(params: Any, u: Array, fun: callable, l: Any = .2) -> jax.Array:
     score_ = score(params, u, fun)
     rho_ = fun(params, u)
     val = (score_/rho_)**2
-    return (l/8.)*jnp.mean(val)
+    return (l/8.)*val
 
 
 @partial(jit,  static_argnums=(2,))
@@ -136,7 +136,7 @@ def thomas_fermi(params: Any, u: Array, fun: callable) -> jax.Array:
     rho_ = fun(params, u)
     val = (rho_)**(2/3)
     l = (3./10.)*(3.*jnp.pi**2)**(2/3)
-    return l*jnp.mean(val)
+    return l*val
 
 
 @partial(jit,  static_argnums=(2,))
@@ -158,6 +158,28 @@ def thomas_fermi_1D(params: Any, u: Array, fun: callable) -> jax.Array:
     val = rho_*rho_
     l = (jnp.pi*jnp.pi)/12.
     return l*val
+# ------------------------------------------------------------------------------------------------------------
+
+
+@partial(jit,  static_argnums=(2,))
+def Dirac_exchange(params: Any, u: Array, fun: callable) -> jax.Array:
+    """_summary_
+
+    ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\int  \rho^{4/3} dr \\
+    ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\mathbb{E}_{\rho} \left[ \rho^{1/3} \right]
+
+    Args:
+        params (Any): _description_
+        u (Array): _description_
+        fun (callable): _description_
+
+    Returns:
+        jax.Array: _description_
+    """
+    rho_ = fun(params, u)
+    l = -(3/4)*(3/jnp.pi)**1/3
+    return l*rho_**(1/3)
+
 # ------------------------------------------------------------------------------------------------------------
 
 
@@ -214,3 +236,37 @@ def Hartree_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
     z = (x-xp)**2+eps
     z = 1./(z**0.5)
     return 0.5*z
+
+
+@partial(jax.jit,  static_argnums=(2,))
+def Nuclei_potential(params: Any, u: Any, T: Callable, mol_info: Any):
+    eps = 1E-4
+
+    @jit
+    def _potential(x: Any, molecule: Any):
+        r = jnp.sqrt(
+            jnp.sum((x-molecule['coords'])*(x-molecule['coords'])+eps, axis=1))
+        z = molecule['z']
+        return z/r
+
+    x = T(params, u)
+    r = vmap(_potential, in_axes=(None, 0), out_axes=1)(x, mol_info)
+    r = jnp.sum(r, axis=1)
+    return -lax.expand_dims(r, dimensions=(1,))
+
+
+if __name__ == '__main__':
+
+    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
+    z = jnp.array([[1.], [1.]])
+    # atoms = ['H', 'H']
+    mol = {'coords': coords, 'z': z}  # 'atoms': atoms
+
+    rng = jax.random.PRNGKey(0)
+    _, key = jax.random.split(rng)
+    x = jax.random.uniform(key, shape=(10, 3))
+
+    y = Nuclei_potential(None, x, None, mol)
+    print(x.shape)
+    print(y.shape)
+    print(x)
