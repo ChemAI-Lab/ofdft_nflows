@@ -203,31 +203,43 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
             #     ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
         if i % 20 == 0 or i < 25:
-            xt = jnp.linspace(-5., 5., 1000)
-            yz = jnp.zeros((zt.shape[0], 2))
-            zt = lax.concatenate((xt, zt), 1)
-            zt_and_logp_zt = lax.concatenate((zt, jnp.zeros_like(zt)), 1)
-
+            xt = jnp.linspace(-2.5, 2.5, 1000)
+            yz = jnp.zeros((xt.shape[0], 2))
+            zt = lax.concatenate((xt[:, None], yz), 1)
+            zt_and_logp_zt = lax.concatenate(
+                (zt, jnp.zeros_like(xt)[:, None]), 1)
             z0, logp_diff_z0 = NODE_rev(params_opt, zt_and_logp_zt)
-            logp_x = prior_dist.log_prob(z0) - logp_diff_z0
+            logp_x = prior_dist.log_prob(z0)[:, None] - logp_diff_z0
             rho_pred = logp_x  # jnp.exp(logp_x)
             def model_identity(params, x): return x
             def f_v(x): return v_functional(None, zt, model_identity, mol)
             v_pot = f_v(zt)
 
+            # exact density n(r) = e−2r /π
+
+            @jax.jit
+            def exact_rho(x): return jnp.exp(-2 *
+                                             jnp.linalg.norm(x, axis=1))/jnp.pi
+
+            rho_exact = exact_rho(zt)
+
             plt.figure(0)
             plt.clf()
             plt.title(
                 f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, ci = {ci:.3f}')
-            plt.plot(zt, n_particles*jnp.exp(rho_pred),
+            plt.plot(xt, rho_exact,
+                     color='k', ls=":", label=r"$\hat{\rho}(x) = e^{-2r}/\pi$")
+            plt.plot(xt, n_particles*jnp.exp(rho_pred),
                      color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
-            plt.plot(zt, v_pot,
-                     ls='--', color='k', label=r'$V(x)$')
+            # plt.plot(xt, v_pot,
+            #          ls='--', color='k', label=r'$V(x)$')
             plt.xlabel('x [Bhor]')
             # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
             plt.savefig(f'{FIG_DIR}/rho_and_V_pot_{i}.png')
+
+            assert 0
 
 
 def main():
