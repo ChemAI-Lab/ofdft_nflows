@@ -233,19 +233,19 @@ def Coulomb_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
 def Hartree_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
     x = T(params, u)
     xp = T(params, up)
-    z = (x-xp)**2+eps
-    z = 1./(z**0.5)
+    z = (x-xp)*(x-xp)
+    z = 1./(z**0.5+eps)
     return 0.5*z
 
 
 @partial(jax.jit,  static_argnums=(2,))
 def Nuclei_potential(params: Any, u: Any, T: Callable, mol_info: Any):
-    eps = 1E-4
+    eps = 0.001  # 0.2162
 
     @jit
     def _potential(x: Any, molecule: Any):
         r = jnp.sqrt(
-            jnp.sum((x-molecule['coords'])*(x-molecule['coords'])+eps, axis=1))
+            jnp.sum((x-molecule['coords'])*(x-molecule['coords']), axis=1)) + eps
         z = molecule['z']
         return z/r
 
@@ -253,6 +253,21 @@ def Nuclei_potential(params: Any, u: Any, T: Callable, mol_info: Any):
     r = vmap(_potential, in_axes=(None, 0), out_axes=1)(x, mol_info)
     r = jnp.sum(r, axis=1)
     return -lax.expand_dims(r, dimensions=(1,))
+
+
+@partial(jax.jit,  static_argnums=(1,))
+def cusp_condition(params: Any, fun: callable, mol_info: Any):
+
+    @jax.jit
+    def _cusp(molecule: Any):
+        x = molecule['coords'][None]
+        z = molecule['z']
+        rho_val = fun(params, x)
+        d_rho_val = score(params, x, fun)
+        return d_rho_val - (-2*z*rho_val)
+
+    l = vmap(_cusp)(mol_info)
+    return jnp.mean(jnp.abs(l))
 
 
 if __name__ == '__main__':
