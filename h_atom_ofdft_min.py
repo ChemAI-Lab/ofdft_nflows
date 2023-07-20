@@ -30,26 +30,31 @@ BHOR = 1.8897259886  # 1AA to BHOR
 # FIG_DIR = "Figures/GP_pot"
 
 
-def get_scheduler(epochs: int, type: str = 'zero'):
-    if type == 'zero':
-        return optax.constant_schedule(0.0)
-    elif type == 'one':
-        return optax.constant_schedule(1.)
-    elif type == 'cos_deacay':
-        return optax.warmup_cosine_decay_schedule(
-            init_value=.0,
-            peak_value=1.0,
-            warmup_steps=1,
-            decay_steps=epochs,
-            end_value=1.0,
-        )
-    elif type == 'mix':
-        constant_scheduler_min = optax.constant_schedule(0.0)
-        cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
-                                                                div_factor=50., final_div_factor=1.)
-        constant_scheduler_max = optax.constant_schedule(1.0)
-        return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
-                                     constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
+def get_scheduler(epochs: int, sched_type: str = 'zero'):
+    try:
+        float(sched_type)
+        v = float(sched_type)
+        return optax.constant_schedule(v)
+    except ValueError:
+        if sched_type == 'zero':
+            return optax.constant_schedule(0.0)
+        elif sched_type == 'one':
+            return optax.constant_schedule(1.)
+        elif sched_type == 'cos_deacay':
+            return optax.warmup_cosine_decay_schedule(
+                init_value=.0,
+                peak_value=1.0,
+                warmup_steps=1,
+                decay_steps=epochs,
+                end_value=1.0,
+            )
+        elif sched_type == 'mix':
+            constant_scheduler_min = optax.constant_schedule(0.0)
+            cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
+                                                                    div_factor=50., final_div_factor=1.)
+            constant_scheduler_max = optax.constant_schedule(1.0)
+            return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
+                                        constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
 
 
 # def load_true_results(n_particles: int):
@@ -250,6 +255,8 @@ def main():
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
     # parser.add_argument("--N", type=int, default=1, help="number of particles")
+    # parser.add_argument("--sched", type=str, default='one',
+    #                     help="Hartree integral scheduler")
     parser.add_argument("--sched", type=str, default='one',
                         help="Hartree integral scheduler")
     args = parser.parse_args()
