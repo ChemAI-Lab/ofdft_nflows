@@ -24,6 +24,7 @@ Array = Any
 KeyArray = Union[Array, prng.PRNGKeyArray]
 
 jax.config.update("jax_enable_x64", True)
+jax.config.update('jax_disable_jit', True)
 
 BHOR = 1.8897259886  # 1AA to BHOR
 # CKPT_DIR = "Results/GP_pot"
@@ -76,10 +77,8 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(3, (264, 264,), bool_neg=False)
-    model_fwd = CNF(3, (264, 264,), bool_neg=True)
-    # model_rev = CNFRicky(1, 512, 512, bool_neg=False)
-    # model_fwd = CNFRicky(1, 512, 512, bool_neg=True)
+    model_rev = CNF(3, (512, 512,), bool_neg=False)
+    model_fwd = CNF(3, (512, 512,), bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -102,7 +101,7 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
     # optimizer = optax.adam(learning_rate=1E-3)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adam(learning_rate=1E-3),
+        optax.adam(learning_rate=3E-4),
     )
     opt_state = optimizer.init(params)
 
@@ -135,21 +134,22 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
     def loss(params, u_samples, ci):
         u_samples, up_samples = u_samples[:batch_size,
                                           :], u_samples[batch_size:, :]
-        t = (n_particles**(5/3))*t_functional(params, u_samples, rho)
-        c_v = (n_particles**2) * \
+        e_t = (n_particles**(5/3))*t_functional(params, u_samples, rho)
+        e_h = (n_particles**2) * \
             Hartree_potential(params, u_samples, up_samples, T)
-        nuc_v = (n_particles)*v_functional(params, u_samples, T, mol)
-        e_xc = (n_particles**(4/3))*Dirac_exchange(params, u_samples, rho)
+        e_nuc_v = (n_particles)*v_functional(params, u_samples, T, mol)
+        e_x = (n_particles**(4/3))*Dirac_exchange(params, u_samples, rho)
 
         cusp = cusp_condition(params, rho_rev, mol)
 
-        e = t + nuc_v + ci*c_v + e_xc + cusp
-        return jnp.mean(e), {"t": jnp.mean(t),
-                             "v": jnp.mean(nuc_v),
-                             "h": jnp.mean(c_v),
-                             "x": jnp.mean(e_xc),
-                             "e": jnp.mean(t + nuc_v + c_v + e_xc),
-                             "cusp": cusp}
+        e = e_t + e_nuc_v + ci*e_h + e_x + cusp
+        energy = jnp.mean(e)
+        return energy, {"t": jnp.mean(e_t),
+                        "v": jnp.mean(e_nuc_v),
+                        "h": jnp.mean(e_h),
+                        "x": jnp.mean(e_x),
+                        "e": energy,
+                        "cusp": cusp}
 
     @jax.jit
     def step(params, opt_state, batch, ci):
@@ -232,7 +232,6 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
             v_pot = f_v(zt)
 
             # exact density n(r) = e−2r /π
-
             @jax.jit
             def exact_rho(x): return jnp.exp(-2 *
                                              jnp.linalg.norm(x, axis=1))/jnp.pi
@@ -281,7 +280,7 @@ def main():
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/H_OFDFT"
+    CKPT_DIR = f"Results/H_OFDFT_Hsched-{scheduler_type}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()

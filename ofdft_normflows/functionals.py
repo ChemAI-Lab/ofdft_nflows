@@ -264,7 +264,7 @@ def cusp_condition(params: Any, fun: callable, mol_info: Any):
         z = molecule['z']
         rho_val = fun(params, x)
         d_rho_val = score(params, x, fun)
-        return d_rho_val - (-2*z*rho_val)
+        return jnp.sum(d_rho_val) - (-2*z*jnp.sum(rho_val))
 
     l = vmap(_cusp)(mol_info)
     return jnp.mean(jnp.abs(l))
