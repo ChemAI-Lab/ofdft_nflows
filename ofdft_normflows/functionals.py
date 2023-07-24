@@ -233,7 +233,7 @@ def Coulomb_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
 def Hartree_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
     x = T(params, u)
     xp = T(params, up)
-    z = (x-xp)*(x-xp)
+    z = jnp.sum((x-xp)*(x-xp), axis=-1, keepdims=True)
     z = 1./(z**0.5+eps)
     return 0.5*z
 
@@ -244,7 +244,7 @@ def Hartree_potential_MT(params: Any, u: Any, up: Any, T: Callable, alpha=0.9448
     # alpha_conv * L = 5, L = 10 A -> alpha_conv = 0.9448623 (Table 1 of J. Chem. Phys. 110, 2810–2821 (1999))
     x = T(params, u)
     xp = T(params, up)
-    r = (x-xp)*(x-xp)
+    r = jnp.sum((x-xp)*(x-xp), axis=-1, keepdims=True)
     r = jnp.sqrt(r)
     return 0.5*(lax.erf(alpha*r)/r + lax.erfc(alpha*r)/r)
 
@@ -261,9 +261,9 @@ def Nuclei_potential(params: Any, u: Any, T: Callable, mol_info: Any):
         return z/r
 
     x = T(params, u)
-    r = vmap(_potential, in_axes=(None, 0), out_axes=1)(x, mol_info)
-    r = jnp.sum(r, axis=1)
-    return -lax.expand_dims(r, dimensions=(1,))
+    r = vmap(_potential, in_axes=(None, 0), out_axes=-1)(x, mol_info)
+    r = jnp.sum(r, axis=-1, keepdims=True)
+    return -r  # lax.expand_dims(r, dimensions=(1,))
 
 
 @partial(jax.jit,  static_argnums=(1,))
@@ -291,8 +291,11 @@ if __name__ == '__main__':
     rng = jax.random.PRNGKey(0)
     _, key = jax.random.split(rng)
     x = jax.random.uniform(key, shape=(10, 3))
-
-    y = Nuclei_potential(None, x, None, mol)
-    print(x.shape)
+    _, key = jax.random.split(key)
+    xp = jax.random.uniform(key, shape=(10, 3))
+    def model_identity(params, x): return x
+    y = Nuclei_potential(None, x, model_identity, mol)
     print(y.shape)
-    print(x)
+
+    v_h = Hartree_potential_MT(None, x, xp, model_identity)
+    print(v_h.shape)
