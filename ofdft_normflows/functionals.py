@@ -238,9 +238,20 @@ def Hartree_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
     return 0.5*z
 
 
+@partial(jax.jit,  static_argnums=(3, 4,))
+def Hartree_potential_MT(params: Any, u: Any, up: Any, T: Callable, alpha=0.9448623):
+    # Martyna-Tuckerman J. Chem. Phys. 110, 2810–2821 (1999)
+    # alpha_conv * L = 5, L = 10 A -> alpha_conv = 0.9448623 (Table 1 of J. Chem. Phys. 110, 2810–2821 (1999))
+    x = T(params, u)
+    xp = T(params, up)
+    r = (x-xp)*(x-xp)
+    r = jnp.sqrt(r)
+    return 0.5*(lax.erf(alpha*r)/r + lax.erfc(alpha*r)/r)
+
+
 @partial(jax.jit,  static_argnums=(2,))
 def Nuclei_potential(params: Any, u: Any, T: Callable, mol_info: Any):
-    eps = 0.001  # 0.2162
+    eps = 1E-3  # 0.2162
 
     @jit
     def _potential(x: Any, molecule: Any):
