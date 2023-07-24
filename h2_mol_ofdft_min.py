@@ -234,26 +234,22 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
             def f_v(x): return v_functional(None, zt, model_identity, mol)
             v_pot = f_v(zt)
 
-            # exact density n(r) = e−2r /π
-            @jax.jit
-            def exact_rho(x): return jnp.exp(-2 *
-                                             jnp.linalg.norm(x, axis=1))/jnp.pi
-
-            rho_exact = exact_rho(zt)
+            # exact density DFT
+            if i == 0:
+                rho_exact = m.prob(m, zt)
 
             plt.figure(0)
             plt.clf()
             plt.title(
                 f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, ci = {ci:.3f}')
-            # plt.plot(xt, rho_exact,
-            #          color='k', ls=":", label=r"$\hat{\rho}(x) = e^{-2r}/\pi$")
-            # plt.plot(xt, n_particles*jnp.exp(rho_pred),
-            #          color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
-            print('caca', v_pot.shape)
-            plt.plot(xt, v_pot,
-                     ls='--', color='k', label=r'$V(x)$')
+            plt.plot(xt, rho_exact,
+                     color='k', ls=":", label=r"$\hat{\rho}_{DFT}(x)$")
+            plt.plot(xt, n_particles*jnp.exp(rho_pred),
+                     color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
+            # plt.plot(xt, v_pot,
+            #          ls='--', color='k', label=r'$V(x)$')
             plt.xlabel('x [Bhor]')
-            plt.ylim(-5., 1.)
+            # plt.ylim(-5., 1.)
             # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
