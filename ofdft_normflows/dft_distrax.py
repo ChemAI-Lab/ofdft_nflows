@@ -53,7 +53,8 @@ class DFTDistribution(distrax.Distribution):
 
     def _mol(self):
         atoms = self.get_molecule()
-        mol = gto.M(atom=atoms, basis=self.basis_set)  # , symmetry = True)
+        mol = gto.M(atom=atoms, basis=self.basis_set,
+                    unit='B')  # , symmetry = True)
         return mol
 
     def _dft(self):

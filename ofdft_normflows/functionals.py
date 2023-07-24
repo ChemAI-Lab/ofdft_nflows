@@ -251,7 +251,7 @@ def Hartree_potential_MT(params: Any, u: Any, up: Any, T: Callable, alpha=0.9448
 
 @partial(jax.jit,  static_argnums=(2,))
 def Nuclei_potential(params: Any, u: Any, T: Callable, mol_info: Any):
-    eps = 1E-3  # 0.2162
+    eps = 1E-4  # 0.2162
 
     @jit
     def _potential(x: Any, molecule: Any):
@@ -295,7 +295,30 @@ if __name__ == '__main__':
     xp = jax.random.uniform(key, shape=(10, 3))
     def model_identity(params, x): return x
     y = Nuclei_potential(None, x, model_identity, mol)
-    print(y.shape)
+    # print(y.shape)
+    import matplotlib
+    import matplotlib.pyplot as plt
+    xt = jnp.linspace(-1.5, 1.5, 1000)
+    yz = jnp.zeros((xt.shape[0], 2))
+    xyz = lax.concatenate((yz, xt[:, None]), 1)
+    v_pot = y = Nuclei_potential(None, xyz, model_identity, mol)
+
+    from dft_distrax import DFTDistribution
+    atoms = ['H', 'H']
+    geom = coords
+
+    m = DFTDistribution(atoms, geom)
+
+    x = jnp.ones((10, 3))
+    # print(m.prob(m,geom))
+    rho = m.prob(m, xyz)
+    # def log_prob(value):
+    #     return jnp.log(m.prob(m, value))
+
+    plt.plot(xt, rho, ls='--', color='k')
+    plt.plot(xt, v_pot)
+    plt.ylim(bottom=-3.1, top=0.35)
+    plt.show()
 
     v_h = Hartree_potential_MT(None, x, xp, model_identity)
     print(v_h.shape)
