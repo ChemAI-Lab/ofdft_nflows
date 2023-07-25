@@ -12,8 +12,8 @@ from flax.training import checkpoints
 import optax
 from distrax import MultivariateNormalDiag, Laplace
 
-from ofdft_normflows.functionals import _kinetic, Dirac_exchange, cusp_condition
-from ofdft_normflows.functionals import Hartree_potential, Nuclei_potential, Hartree_potential_MT
+from ofdft_normflows.functionals import Dirac_exchange, cusp_condition, Hartree_potential_MT
+from ofdft_normflows.functionals import _kinetic, _nuclear
 from ofdft_normflows.dft_distrax import DFTDistribution
 from ofdft_normflows.cn_flows import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
@@ -25,7 +25,7 @@ Array = Any
 KeyArray = Union[Array, prng.PRNGKeyArray]
 
 jax.config.update("jax_enable_x64", True)
-jax.config.update('jax_disable_jit', True)
+# jax.config.update('jax_disable_jit', True)
 
 BHOR = 1.8897259886  # 1AA to BHOR
 # CKPT_DIR = "Results/GP_pot"
@@ -66,7 +66,11 @@ def get_scheduler(epochs: int, sched_type: str = 'zero'):
 #     return data
 
 
-def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = False, scheduler_type: str = 'ones'):
+def training(batch_size: int = 256,
+             epochs: int = 100,
+             v_pot: str = 'HGH',
+             bool_load_params: bool = False,
+             scheduler_type: str = 'ones'):
 
     mol_name = 'H2'
     n_particles = 2
@@ -94,17 +98,16 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
         params, batch, model_fwd, 0., 1., 3)
 
     t_functional = _kinetic('TF')
-    v_functional = lambda *args: Nuclei_potential(*args)
+    v_functional = _nuclear(v_pot)
 
     mean = jnp.zeros((3,))
-    cov = 0.1 * jnp.ones((3,))
+    cov = jnp.ones((3,))
     prior_dist = MultivariateNormalDiag(mean, cov)
-    # prior_dist = Laplace()
 
     # optimizer = optax.adam(learning_rate=1E-3)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adam(learning_rate=3E-4),
+        optax.adam(learning_rate=1E-5),
     )
     opt_state = optimizer.init(params)
 
@@ -145,7 +148,7 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
 
         cusp = cusp_condition(params, rho_rev, mol)
 
-        e = e_t + e_nuc_v + ci*e_h + e_x + cusp
+        e = e_t + e_nuc_v + ci*e_h + 0.*e_x + cusp
         energy = jnp.mean(e)
         return energy, {"t": jnp.mean(e_t),
                         "v": jnp.mean(e_nuc_v),
@@ -255,7 +258,7 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
             plt.tight_layout()
             plt.savefig(f'{FIG_DIR}/rho_and_V_pot_{i}.png')
 
-            assert 0
+            # assert 0
 
 
 def main():
@@ -280,7 +283,7 @@ def main():
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/H_OFDFT_Hsched-{scheduler_type}"
+    CKPT_DIR = f"Results/H2_OFDFT_Hsched-{scheduler_type}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()

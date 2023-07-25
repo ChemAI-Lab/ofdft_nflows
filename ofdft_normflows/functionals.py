@@ -239,7 +239,7 @@ def Hartree_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
 
 
 @partial(jax.jit,  static_argnums=(3, 4,))
-def Hartree_potential_MT(params: Any, u: Any, up: Any, T: Callable, alpha=0.9448623):
+def Hartree_potential_MT(params: Any, u: Any, up: Any, T: Callable, alpha=0.5):
     # Martyna-Tuckerman J. Chem. Phys. 110, 2810–2821 (1999)
     # alpha_conv * L = 5, L = 10 A -> alpha_conv = 0.9448623 (Table 1 of J. Chem. Phys. 110, 2810–2821 (1999))
     x = T(params, u)
@@ -247,6 +247,22 @@ def Hartree_potential_MT(params: Any, u: Any, up: Any, T: Callable, alpha=0.9448
     r = jnp.sum((x-xp)*(x-xp), axis=-1, keepdims=True)
     r = jnp.sqrt(r)
     return 0.5*(lax.erf(alpha*r)/r + lax.erfc(alpha*r)/r)
+
+# ------------------------------------------------------------------------------------------------------------
+
+
+def _nuclear(name: str = 'HGH'):
+    if name.lower() == 'hgh':
+        def wrapper(*args):
+            return Nuclei_potential_HGH(*args)
+    elif name.lower() == 'madness':
+        def wrapper(*args):
+            return Nuclei_potential_smooth(*args)
+    else:
+        def wrapper(*args):
+            return Nuclei_potential(*args)
+
+    return wrapper
 
 
 @partial(jax.jit,  static_argnums=(2,))
@@ -266,6 +282,76 @@ def Nuclei_potential(params: Any, u: Any, T: Callable, mol_info: Any):
     return -r  # lax.expand_dims(r, dimensions=(1,))
 
 
+@partial(jax.jit,  static_argnums=(2,))
+def Nuclei_potential_smooth(params: Any, u: Any, T: Callable, mol_info: Any):
+    # J. Chem. Phys. 121, 11587–11598 (2004)
+    # Eq 25-27
+    eps = 1E-2  # 0.2162
+    c0 = 0.00435
+    pi_sqrt = jnp.sqrt(jnp.pi)
+
+    @jax.jit
+    def _u(r: Any):
+        r2 = r*r
+        return lax.erf(r)/r + (1/(3*pi_sqrt))*(jnp.exp(-r2)+16*jnp.exp(-4*r2))
+
+    @jax.jit
+    def _potential(x: Any, molecule: Any):
+        z = molecule['z']
+        r = jnp.sqrt(
+            jnp.sum((x-molecule['coords'])*(x-molecule['coords']), axis=1))
+        c = (c0*eps/z**5)**1.3
+        v = _u(r/c)/c
+        return v
+
+    x = T(params, u)
+    r = vmap(_potential, in_axes=(None, 0), out_axes=-1)(x, mol_info)
+    r = jnp.sum(r, axis=-1, keepdims=True)
+    return -r  # lax.expand_dims(r, dimensions=(1,))
+
+
+@partial(jax.jit,  static_argnums=(2,))
+def Nuclei_potential_HGH(params: Any, u: Any, T: Callable, mol_info: Any):
+    # INCORRECT only Hydrogen parameters
+    #  Phys. Rev. B 58, 3641
+    two_sqrt = jnp.sqrt(2)
+    # H_pp_params = {'Zion': jnp.ones(1), 'rloc': 2*jnp.ones(1),
+    #                'C1': -4.180237*jnp.ones(1), 'C2': 0.725075*jnp.ones(1), 'C3': jnp.zeros(1), 'C4': jnp.zeros(1), }
+    H_pp_params = {'Zion': 1., 'rloc': 0.2,
+                   'C1': -4.180237, 'C2': 0.725075, 'C3': 0., 'C4': 0., }
+
+    @jax.jit
+    def _u(r: Any, params_pp: Any):
+        # eq 1
+        zion = params_pp['Zion']
+        rloc = params_pp['rloc']
+        c1 = params_pp['C1']
+        c2 = params_pp['C2']
+        c3 = params_pp['C3']
+        c4 = params_pp['C4']
+        r_rloc = r/rloc
+        r_rloc_2 = r_rloc*r_rloc
+        v0 = (-zion/r)*lax.erf(r_rloc/two_sqrt)
+        v1 = jnp.exp(-0.5*(r_rloc_2))
+        v2 = c1 + c2*r_rloc_2 + c3*(r_rloc**4) + c4*(r_rloc**6)
+        return v0 + v1*v2
+
+    @jax.jit
+    def _potential(x: Any, molecule: Any):
+        z = molecule['z']
+        # ai = molecule['atoms']
+        r = jnp.sqrt(
+            jnp.sum((x-molecule['coords'])*(x-molecule['coords']), axis=1))
+        params_p_zi = H_pp_params
+        v = _u(r, params_p_zi)
+        return v
+
+    x = T(params, u)
+    r_all = vmap(_potential, in_axes=(None, 0), out_axes=-1)(x, mol_info)
+    r = jnp.sum(r_all, axis=-1, keepdims=True)
+    return r  # lax.expand_dims(r, dimensions=(1,))
+
+
 @partial(jax.jit,  static_argnums=(1,))
 def cusp_condition(params: Any, fun: callable, mol_info: Any):
 
@@ -275,6 +361,7 @@ def cusp_condition(params: Any, fun: callable, mol_info: Any):
         z = molecule['z']
         rho_val = fun(params, x)
         d_rho_val = score(params, x, fun)
+        # check with the norm
         return jnp.sum(d_rho_val) - (-2*z*jnp.sum(rho_val))
 
     l = vmap(_cusp)(mol_info)
@@ -284,8 +371,8 @@ def cusp_condition(params: Any, fun: callable, mol_info: Any):
 if __name__ == '__main__':
 
     coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
-    z = jnp.array([[1.], [1.]])
-    # atoms = ['H', 'H']
+    z = jnp.array([[1], [1]], dtype=int)
+    # atoms = jnp.array(['H', 'H'], dtype=str)
     mol = {'coords': coords, 'z': z}  # 'atoms': atoms
 
     rng = jax.random.PRNGKey(0)
@@ -298,10 +385,12 @@ if __name__ == '__main__':
     # print(y.shape)
     import matplotlib
     import matplotlib.pyplot as plt
-    xt = jnp.linspace(-1.5, 1.5, 1000)
+    xt = jnp.linspace(-1.5, 1.5, 500)
     yz = jnp.zeros((xt.shape[0], 2))
     xyz = lax.concatenate((yz, xt[:, None]), 1)
     v_pot = y = Nuclei_potential(None, xyz, model_identity, mol)
+    v_pot_s = Nuclei_potential_smooth(None, xyz, model_identity, mol)
+    v_pot_hgh = Nuclei_potential_HGH(None, xyz, model_identity, mol)
 
     from dft_distrax import DFTDistribution
     atoms = ['H', 'H']
@@ -315,9 +404,11 @@ if __name__ == '__main__':
     # def log_prob(value):
     #     return jnp.log(m.prob(m, value))
 
-    plt.plot(xt, rho, ls='--', color='k')
-    plt.plot(xt, v_pot)
-    plt.ylim(bottom=-3.1, top=0.35)
+    # plt.plot(xt, rho, ls='--', color='k')
+    # plt.plot(xt, v_pot)
+    plt.scatter(xt, v_pot_hgh, s=5)
+    # plt.scatter(xt, v_pot_s, s=5)
+    # plt.ylim(bottom=-55., top=-1)
     plt.show()
 
     v_h = Hartree_potential_MT(None, x, xp, model_identity)

@@ -28,3 +28,5 @@ correct definition of the CNFs
     def NODE_fwd(params, batch): return neural_ode(
         params, batch, model_fwd, 0., 10., 2)
 '''
+git fetch
+git checkout origin/rho_mll -- path/to/file

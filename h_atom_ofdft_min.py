@@ -12,8 +12,8 @@ from flax.training import checkpoints
 import optax
 from distrax import MultivariateNormalDiag, Laplace
 
-from ofdft_normflows.functionals import _kinetic, Dirac_exchange, cusp_condition
-from ofdft_normflows.functionals import Hartree_potential, Nuclei_potential
+from ofdft_normflows.functionals import Dirac_exchange, cusp_condition, Hartree_potential_MT
+from ofdft_normflows.functionals import _kinetic, _nuclear
 from ofdft_normflows.cn_flows import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.cn_flows import Gen_CNFRicky as CNFRicky
@@ -65,7 +65,11 @@ def get_scheduler(epochs: int, sched_type: str = 'zero'):
 #     return data
 
 
-def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = False, scheduler_type: str = 'ones'):
+def training(batch_size: int = 256,
+             epochs: int = 100,
+             v_pot: str = 'HGH',
+             bool_load_params: bool = False,
+             scheduler_type: str = 'ones'):
 
     mol_name = 'H'
     n_particles = 1
@@ -91,17 +95,17 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
         params, batch, model_fwd, 0., 1., 3)
 
     t_functional = _kinetic('TF')
-    v_functional = lambda *args: Nuclei_potential(*args)
+    v_functional = _nuclear(v_pot)
 
     mean = jnp.zeros((3,))
-    cov = 0.1 * jnp.ones((3,))
+    cov = jnp.ones((3,))
     prior_dist = MultivariateNormalDiag(mean, cov)
     # prior_dist = Laplace()
 
     # optimizer = optax.adam(learning_rate=1E-3)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adam(learning_rate=3E-4),
+        optax.adam(learning_rate=1E-5),
     )
     opt_state = optimizer.init(params)
 
@@ -122,7 +126,7 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
     def rho_rev(params, x):
         zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
         z0, logp_z0 = NODE_rev(params, zt)
-        logp_x = prior_dist.log_prob(z0)[:, None] + logp_z0
+        logp_x = prior_dist.log_prob(z0)[:, None] - logp_z0
         return jnp.exp(logp_x)  # logp_x
 
     @jax.jit
@@ -136,13 +140,13 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
                                           :], u_samples[batch_size:, :]
         e_t = (n_particles**(5/3))*t_functional(params, u_samples, rho)
         e_h = (n_particles**2) * \
-            Hartree_potential(params, u_samples, up_samples, T)
+            Hartree_potential_MT(params, u_samples, up_samples, T)
         e_nuc_v = (n_particles)*v_functional(params, u_samples, T, mol)
         e_x = (n_particles**(4/3))*Dirac_exchange(params, u_samples, rho)
 
         cusp = cusp_condition(params, rho_rev, mol)
 
-        e = e_t + e_nuc_v + ci*e_h + e_x + cusp
+        e = e_t + e_nuc_v + ci*e_h + 0.*e_x + cusp
         energy = jnp.mean(e)
         return energy, {"t": jnp.mean(e_t),
                         "v": jnp.mean(e_nuc_v),
@@ -177,17 +181,11 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
 
             yield lax.concatenate((samples0, samples1), 0)
 
-    # @jax.jit
-    # def _integral(params):
-    #     return jnp.trapz(p_x.ravel(), zt.ravel(), jnp.abs(zt[1, 0]-zt[0, 0])), jnp.mean(logp_diff_z0)
-
     loss0 = jnp.inf
     df = pd.DataFrame()
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, batch_size)
     scheduler = get_scheduler(epochs, scheduler_type)
-    # x_and_rho_true = load_true_results(
-    # n_particles)  # read results from JCTC paper
 
     for i in range(epochs+1):
         ci = scheduler(i)
@@ -195,7 +193,6 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
         params, opt_state, loss_value = step(params, opt_state, batch, ci)
         loss_epoch, losses = loss_value
 
-        # norm_integral, log_det_Jac = _integral(params)
         mean_energy = losses['e']
         r_ = {'epoch': i,
               'L': loss_epoch, 'E': mean_energy,
@@ -249,7 +246,7 @@ def training(batch_size: int = 256, epochs: int = 100, bool_load_params: bool = 
             # plt.plot(xt, v_pot,
             #  ls='--', color='k', label=r'$V(x)$')
             plt.xlabel('x [Bhor]')
-            plt.ylim(-10, 2.1)
+            # plt.ylim(-10, 2.1)
             # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
