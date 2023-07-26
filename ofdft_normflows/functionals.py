@@ -220,6 +220,19 @@ def GaussianPotential1D_pot(params: Any, u: Any, T: Callable,  params_pot: Any =
     y = jnp.sum(y, axis=-1).transpose()
     return y
 
+# ------------------------------------------------------------------------------------------------------------
+
+
+def _hartree(name: str = 'full'):
+    if name.lower() == 'mt':
+        def wrapper(*args):
+            return Hartree_potential_MT(*args)
+    else:  # full
+        def wrapper(*args):
+            return Hartree_potential(*args)
+
+    return wrapper
+
 
 @partial(jax.jit,  static_argnums=(3,))
 def Coulomb_potential(params: Any, u: Any, up: Any, T: Callable, eps=1E-3):
