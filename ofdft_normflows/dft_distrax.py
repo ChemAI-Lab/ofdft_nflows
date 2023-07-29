@@ -1,7 +1,8 @@
-from distrax._src.distributions.distribution import Array
+
 from functools import partial
 from typing import Tuple, Optional, Union, Any
 import numpy as onp
+
 import jax
 import jax.numpy as jnp
 
@@ -13,6 +14,7 @@ from pyscf.data.nist import BOHR
 
 import distrax
 from distrax._src.distributions import distribution
+from distrax._src.distributions.distribution import Array
 
 Any = Any
 Array = jax.Array

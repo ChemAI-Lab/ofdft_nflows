@@ -43,3 +43,30 @@ def score(params: Any, X: Array, fun: callable) -> jax.Array:
 
     v_score = vmap(_score, in_axes=(None, 0))
     return v_score(params, X)
+
+
+def get_scheduler(epochs: int, sched_type: str = 'zero'):
+    try:
+        float(sched_type)
+        v = float(sched_type)
+        return optax.constant_schedule(v)
+    except ValueError:
+        if sched_type == 'zero':
+            return optax.constant_schedule(0.0)
+        elif sched_type == 'one':
+            return optax.constant_schedule(1.)
+        elif sched_type == 'cos_deacay':
+            return optax.warmup_cosine_decay_schedule(
+                init_value=.0,
+                peak_value=1.0,
+                warmup_steps=1,
+                decay_steps=epochs,
+                end_value=1.0,
+            )
+        elif sched_type == 'mix':
+            constant_scheduler_min = optax.constant_schedule(0.0)
+            cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
+                                                                    div_factor=50., final_div_factor=1.)
+            constant_scheduler_max = optax.constant_schedule(1.0)
+            return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
+                                        constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])

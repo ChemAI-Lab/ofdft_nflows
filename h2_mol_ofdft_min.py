@@ -18,6 +18,7 @@ from ofdft_normflows.dft_distrax import DFTDistribution
 from ofdft_normflows.cn_flows import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.cn_flows import Gen_CNFRicky as CNFRicky
+from ofdft_normflows.utils import get_scheduler
 
 import matplotlib.pyplot as plt
 
@@ -37,33 +38,6 @@ def compute_integral(params: Any, grid_array: Any, rho: Any, Ne: int, bs: int):
     grid_coords, grid_weights = grid_array
     rho_val = Ne*rho(params, grid_coords)
     return jnp.vdot(grid_weights, rho_val)
-
-
-def get_scheduler(epochs: int, sched_type: str = 'zero'):
-    try:
-        float(sched_type)
-        v = float(sched_type)
-        return optax.constant_schedule(v)
-    except ValueError:
-        if sched_type == 'zero':
-            return optax.constant_schedule(0.0)
-        elif sched_type == 'one':
-            return optax.constant_schedule(1.)
-        elif sched_type == 'cos_deacay':
-            return optax.warmup_cosine_decay_schedule(
-                init_value=.0,
-                peak_value=1.0,
-                warmup_steps=1,
-                decay_steps=epochs,
-                end_value=1.0,
-            )
-        elif sched_type == 'mix':
-            constant_scheduler_min = optax.constant_schedule(0.0)
-            cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
-                                                                    div_factor=50., final_div_factor=1.)
-            constant_scheduler_max = optax.constant_schedule(1.0)
-            return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
-                                        constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
 
 
 def training(t_kin: str = 'TF',
@@ -253,7 +227,7 @@ def training(t_kin: str = 'TF',
             plt.title(
                 f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, I = {norm_val:.3f}')  # , ci = {ci:.3f}
             plt.plot(xt, rho_exact,
-                     color='k', ls=":", label=r"$\hat{\rho}_{DFT}(x)$, I = %.2f" % norm_dft)
+                     color='k', ls=":", label=r"$\hat{\rho}_{DFT}(x)$, I = %.1f" % norm_dft)
             plt.plot(xt, Ne*jnp.exp(rho_pred),
                      color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
             # plt.plot(xt, v_pot,
@@ -263,7 +237,7 @@ def training(t_kin: str = 'TF',
             # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
-            plt.savefig(f'{FIG_DIR}/rho_and_V_pot_{i}.png')
+            plt.savefig(f'{FIG_DIR}/epoch_{i}_rho.png')
 
             # assert 0
 
