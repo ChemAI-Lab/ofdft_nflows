@@ -30,14 +30,14 @@ class DFTDistribution(distrax.Distribution):
         self.basis_set = basis_set
         self.exc = exc
         self.dtype_ = dtype_
-        # self._level = 5
 
+        self._grid_level = 2  # change this for larger molecules
         self.mol = self._mol()
         self.Ne = self.mol.tot_electrons()
         self.dft, self.rdm1 = self._dft()
 
-        # coords = mf.grids.coords
-        # weights = mf.grids.weights
+        self.coords = jnp.array(self.dft.grids.coords)
+        self.weights = jnp.array(self.dft.grids.weights)
 
     def get_molecule(self):
         m_ = ""
@@ -62,7 +62,7 @@ class DFTDistribution(distrax.Distribution):
         mf_hf.xc = self.exc  # default
         mf_hf = mf_hf.newton()
         mf_hf.kernel()
-        # mf.grids.level = _level
+        mf_hf.grids.level = self._grid_level
         mf_hf.grids.build(with_non0tab=True)
         dm = mf_hf.make_rdm1()
         return mf_hf, dm
@@ -73,7 +73,7 @@ class DFTDistribution(distrax.Distribution):
         ao_value = numint.eval_ao(self.mol, coords, deriv=1)
         rho_and_grho = numint.eval_rho(
             self.mol, ao_value, self.rdm1, xctype='GGA')
-        rho = jnp.asarray(rho_and_grho[0], dtype=self.dtype_)/self.Ne
+        rho = jnp.asarray(rho_and_grho[0], dtype=self.dtype_)  # /self.Ne
         return rho[:, None]  # includes batch dimension
 
     def prob_fwd(self, value):
@@ -124,3 +124,7 @@ if __name__ == '__main__':
     def log_prob(value):
         return jnp.log(m.prob(m, value))
     print(jax.jacrev(log_prob)(x))
+
+    print('caca')
+    print(m.coords.shape)
+    print(m.weights.shape)
