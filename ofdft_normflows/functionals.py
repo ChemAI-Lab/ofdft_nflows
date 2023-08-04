@@ -25,85 +25,85 @@ def _kinetic(name: str = 'TF'):
     elif name.lower() == 'w' or name.lower() == 'weizsacker':
         def wrapper(*args):
             return weizsacker(*args)
+    elif name.lower() == 'w1d' or name.lower() == 'weizsacker1d':
+        def wrapper(*args):
+            return weizsacker(*args, l=1.)
     elif name.lower() == 'k' or name.lower() == 'kinetic':
         def wrapper(*args):
             return kinetic(*args)
     return wrapper
 
 
-@ partial(jit,  static_argnums=(3,))
-def kinetic(params: Any, u: Any, Ne: int, rho: Callable) -> jax.Array:
-    def sqrt_rho(params, u): return (rho(params, u)+1E-4)**0.5  # flax format
-    lap_val = laplacian(params, u, sqrt_rho)
-    # return -0.5*jnp.mean(lap_val)
-    rho_val = rho(params, u)
-    rho_val = 1./(rho_val+1E-4)**0.5  # for numerical stability
-    return -0.5*jnp.multiply(rho_val, lap_val)
+# @ partial(jit,  static_argnums=(3,))
+@jit
+def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array:  # CHECK THIS ONE
+    rho_val = 1./(den+1E-4)**0.5  # for numerical stability
+    return -0.5*jnp.multiply(rho_val, lap_sqrt_den)
 
 
-@partial(jit,  static_argnums=(3,))
-def weizsacker(params: Any, u: Array, Ne: int, fun: callable, l: Any = .2) -> jax.Array:
-    """
+# @partial(jit,  static_argnums=(3,))
+@jit
+def weizsacker(den: Array, score: Array, Ne: int, l: Any = .2) -> jax.Array:
+    """    
     l = 0.2 (W Stich, EKU Gross., Physik A Atoms and Nuclei, 309(1):511, 1982.)
     T_{\text{Weizsacker}}[\rho] &=& \frac{\lambda}{8} \int \frac{(\nabla \rho)^2}{\rho} dr = 
                             &=&    \frac{\lambda}{8} \int  \rho \left(\frac{(\nabla \rho)}{\rho}\right)^2 dr\\
     T_{\text{Weizsacker}}[\rho] = \mathbb{E}_{\rho} \left[ \left(\frac{(\nabla \rho)}{\rho}\right)^2 \right]
 
+
     Args:
-        params (Any): _description_
-        u (Array): _description_
-        fun (callable): _description_
-        l (Any, optional): _description_. Defaults to 1..
+        score (Array): _description_
+        Ne (int): _description_
+        l (Any, optional): _description_. Defaults to .2.
 
     Returns:
         jax.Array: _description_
     """
-    score_ = score(params, u, fun)
-    rho_ = fun(params, u)
-    val = (score_/rho_)**2
-    return (l*Ne/8.)*val
+    return (l*Ne/8.)*score*score
 
 
-@partial(jit,  static_argnums=(3,))
-def thomas_fermi(params: Any, u: Array, Ne: int, fun: callable) -> jax.Array:
-    """_summary_
-
+# @partial(jit,  static_argnums=(3,))
+@jit
+def thomas_fermi(den: Array, score: Array, Ne: int) -> jax.Array:
+    """
     T_{\text{TF}}[\rho] &=& \frac{3}{10}(3\pi^2)^{2/3} \int ( \rho)^{5/3} dr \\
     T_{\text{TF}}[\rho] = \mathbb{E}_{\rho} \left[ ( \rho)^{2/3} \right]
 
+
     Args:
         params (Any): _description_
-        u (Array): _description_
-        fun (callable): _description_
+        den (Array): _description_
+        Ne (int): _description_
 
     Returns:
         jax.Array: _description_
     """
-    rho_ = fun(params, u)
-    val = (rho_)**(2/3)
+
+    val = (den)**(2/3)
     l = (3./10.)*(3.*jnp.pi**2)**(2/3)
     return l*(Ne**(5/3))*val
 
 
-@partial(jit,  static_argnums=(3,))
-def thomas_fermi_1D(params: Any, u: Array, Ne: int, fun: callable) -> jax.Array:
-    """_summary_
-
-    T_{\text{TF}}[\rho] &=& \frac{\pi^2}{12}\int ( \rho)^{} dr \\
+# @partial(jit,  static_argnums=(3,))
+@jit
+def thomas_fermi_1D(den: Array, score: Array, Ne: int) -> jax.Array:
+    """
+    T_{\text{TF}}[\rho] &=& \frac{\pi^2}{12}\int ( \rho)^{3} dr \\
     T_{\text{TF}}[\rho] = \frac{\pi^2}{12}\mathbb{E}_{\rho} \left[ ( \rho)^{2} \right]
 
     Args:
         params (Any): _description_
         u (Array): _description_
+        Ne (int): _description_
         fun (callable): _description_
 
     Returns:
         jax.Array: _description_
     """
-    rho_ = fun(params, u)
-    val = rho_*rho_
+
+    den_sqr = den*den
     l = (jnp.pi*jnp.pi)/12.
-    return l*(Ne**3)*val
+    return l*(Ne**3)*den_sqr
 # ------------------------------------------------------------------------------------------------------------
 
 
@@ -114,24 +114,22 @@ def _exchange(name: str = 'dirac'):
     return wrapper
 
 
-@partial(jit,  static_argnums=(3,))
-def Dirac_exchange(params: Any, u: Array, Ne: int, fun: callable) -> jax.Array:
-    """_summary_
-
+@jit
+def Dirac_exchange(den: Array, Ne: int) -> jax.Array:
+    """
     ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\int  \rho^{4/3} dr \\
     ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\mathbb{E}_{\rho} \left[ \rho^{1/3} \right]
 
     Args:
         params (Any): _description_
-        u (Array): _description_
-        fun (callable): _description_
+        den (Array): _description_
+        Ne (int): _description_
 
     Returns:
         jax.Array: _description_
     """
-    rho_ = fun(params, u)
     l = -(3/4)*(Ne**(4/3))*(3/jnp.pi)**1/3
-    return l*rho_**(1/3)
+    return l*den**(1/3)
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -148,21 +146,19 @@ def _hartree(name: str = 'mt'):
     return wrapper
 
 
-@partial(jax.jit,  static_argnums=(4, 5, ))
-def Hartree_potential(params: Any, u: Any, up: Any, Ne: int, T: Callable, eps=1E-3):
-    x = T(params, u)
-    xp = T(params, up)
-    z = jnp.sum((x-xp)*(x-xp), axis=-1, keepdims=True)
-    z = 1./(z**0.5+eps)
+# @partial(jax.jit,  static_argnums=(4, 5, ))
+@jit
+def Hartree_potential(x: Any, xp: Any, Ne: int, eps=1E-5):
+    z = jnp.sum((x-xp)*(x-xp)+eps, axis=-1, keepdims=True)
+    z = 1./(z**0.5)
     return 0.5*(Ne**2)*z
 
 
-@partial(jax.jit,  static_argnums=(4, 5,))
-def Hartree_potential_MT(params: Any, u: Any, up: Any, Ne: int, T: Callable, alpha=0.5):
+@jit
+def Hartree_potential_MT(x: Any, xp: Any, Ne: int, alpha=0.5):
     # Martyna-Tuckerman J. Chem. Phys. 110, 2810–2821 (1999), Eq. B1, alpha_conv * L > 7
     # alpha_conv * L = 5, L = 10 A -> alpha_conv = 0.9448623 (Table 1 of J. Chem. Phys. 110, 2810–2821 (1999))
-    x = T(params, u)
-    xp = T(params, up)
+
     r = jnp.sum((x-xp)*(x-xp), axis=-1, keepdims=True)
     r = jnp.sqrt(r)
     return 0.5*(Ne**2)*(lax.erf(alpha*r)/r + lax.erfc(alpha*r)/r)
@@ -190,9 +186,8 @@ def _nuclear(name: str = 'HGH'):
     return wrapper
 
 
-@partial(jit,  static_argnums=(3,))
-def harmonic_potential(params: Any, u: Any, Ne: int, T: Callable, k: Any = 1.) -> jax.Array:
-    x, _ = T(params, u)
+@jit
+def harmonic_potential(params: Any, x: Any, Ne: int, k: Any = 1.) -> jax.Array:
     return 0.5*Ne*k*jnp.mean(x**2)
 
 
@@ -213,8 +208,8 @@ def Nuclei_potential(params: Any, u: Any, Ne: int, T: Callable, mol_info: Any):
     return -Ne*r  # lax.expand_dims(r, dimensions=(1,))
 
 
-@partial(jax.jit,  static_argnums=(3,))
-def Nuclei_potential_smooth(params: Any, u: Any,  Ne: int, T: Callable, mol_info: Any):
+@jit
+def Nuclei_potential_smooth(params: Any, x: Any,  Ne: int, mol_info: Any):
     # J. Chem. Phys. 121, 11587–11598 (2004)
     # Eq 25-27
     eps = 1E-2  # 0.2162
@@ -235,14 +230,13 @@ def Nuclei_potential_smooth(params: Any, u: Any,  Ne: int, T: Callable, mol_info
         v = _u(r/c)/c
         return v
 
-    x = T(params, u)
     r = vmap(_potential, in_axes=(None, 0), out_axes=-1)(x, mol_info)
     r = jnp.sum(r, axis=-1, keepdims=True)
     return -Ne*r  # lax.expand_dims(r, dimensions=(1,))
 
 
-@partial(jax.jit,  static_argnums=(3,))
-def Nuclei_potential_HGH(params: Any, u: Any,  Ne: int, T: Callable, mol_info: Any):
+@jit
+def Nuclei_potential_HGH(x: Any,  Ne: int, mol_info: Any):
     # INCORRECT only Hydrogen parameters
     #  Phys. Rev. B 58, 3641
     two_sqrt = jnp.sqrt(2)
@@ -277,20 +271,16 @@ def Nuclei_potential_HGH(params: Any, u: Any,  Ne: int, T: Callable, mol_info: A
         v = _u(r, params_p_zi)
         return v
 
-    x = T(params, u)
     r_all = vmap(_potential, in_axes=(None, 0), out_axes=-1)(x, mol_info)
     r = jnp.sum(r_all, axis=-1, keepdims=True)
     return Ne*r  # lax.expand_dims(r, dimensions=(1,))
 
 
-@partial(jit,  static_argnums=(3, 4,))
-def GaussianPotential1D(params: Any, u: Any, Ne: int, T: Callable, params_pot: Any = None) -> jax.Array:
+@jit
+def GaussianPotential1D(x: Any, Ne: int, params_pot: Any = None) -> jax.Array:
     if (params_pot is None):
         params_pot = {'alpha': jnp.array([[1.], [2.]]),  # Ha/electron
                       'beta': -1.*jnp.array([[-0.5], [1.]])}  # BHOR
-
-    # x = T(u)
-    x = T(params, u)
 
     @jit
     def _f(x: Array, params_pot: Any):

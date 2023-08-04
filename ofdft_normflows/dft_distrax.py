@@ -22,6 +22,8 @@ PRNGKey = jax.random.PRNGKey
 EventT = distribution.EventT
 Dtype = Any
 
+# jax.config.update('jax_disable_jit', True)
+
 
 class DFTDistribution(distrax.Distribution):
 
@@ -71,7 +73,7 @@ class DFTDistribution(distrax.Distribution):
 
     @partial(jax.custom_vjp, nondiff_argnums=(0,))
     def prob(self, value):
-        coords = value
+        coords = onp.array(value)
         ao_value = numint.eval_ao(self.mol, coords, deriv=1)
         rho_and_grho = numint.eval_rho(
             self.mol, ao_value, self.rdm1, xctype='GGA')
@@ -84,7 +86,8 @@ class DFTDistribution(distrax.Distribution):
         rho_and_grho = numint.eval_rho(
             self.mol, ao_value, self.rdm1, xctype='GGA')
         rho = jnp.array(rho_and_grho[0], dtype=self.dtype_)/self.Ne
-        drho_dx = jnp.array(rho_and_grho[1:, :].T, dtype=self.dtype_)/self.Ne
+        drho_dx = jnp.array(
+            rho_and_grho[1:, :].T, dtype=self.dtype_)/self.Ne
         return rho[:, None], (drho_dx)
 
     def prob_bwd(self, res, g):

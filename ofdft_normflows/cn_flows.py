@@ -2,7 +2,7 @@
 from functools import partial
 import jax
 from typing import Any, Callable, Sequence, Optional, NewType, Tuple
-from jax import lax, random, vmap, scipy, numpy as jnp
+from jax import lax, random, vmap, scipy, vjp, numpy as jnp
 from jax.experimental.ode import odeint
 import jax.random as jrnd
 
@@ -222,7 +222,7 @@ def neural_ode_score(params: Any, batch: Any, f: Callable, t0: float, t1: float,
     @jax.jit
     def _evol_fn_i(params, t, state):
         state = lax.expand_dims(state, dimensions=(0,))
-        state, score = state[:, :-in_out_dim], state[:, -in_out_dim:]
+        state, score = state[:, :-d_dim], state[:, -d_dim:]
         def _f_div(state): return jnp.sum(
             f.apply(params, t, state)[:, -1:])
 
@@ -268,7 +268,7 @@ if __name__ == '__main__':
     rng = jrnd.PRNGKey(0)
     _, key = jrnd.split(rng)
 
-    in_out_dim = 1
+    in_out_dim = 2
 
     # dist_prior = Normal(0., 1.)
     mean = jnp.zeros((in_out_dim,))
@@ -317,7 +317,7 @@ if __name__ == '__main__':
         return jnp.sum(logp_zt), zt.ravel()
 
     x0 = x0[:, :-in_out_dim]
-    logp, (x, outputs) = vmap(log_prob, in_axes=(None, 0))(params, x0)
+    logp, x = vmap(log_prob, in_axes=(None, 0))(params, x0)
     # print(logp)
     print('x:', x)
     print('logp:', logp)
@@ -327,13 +327,3 @@ if __name__ == '__main__':
     print('x:', x)
     print('logp:', logp)
     print('score:', score_ad)
-
-    # EXTRA
-    '''
-    def gf(params, t, state):
-        div_and_dx, g = value_and_grad(
-            f, argnums=(2,), has_aux=True)(params, t, state)
-        div, dx = div_and_dx
-        grad_div = g[0][:, :in_out_dim]
-        return div, dx, (div, dx, grad_div)    
-    '''
