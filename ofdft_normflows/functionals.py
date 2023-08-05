@@ -25,6 +25,9 @@ def _kinetic(name: str = 'TF'):
     elif name.lower() == 'w' or name.lower() == 'weizsacker':
         def wrapper(*args):
             return weizsacker(*args)
+    elif name.lower() == 'tf-w' or name.lower() == 'thomas_fermi_weizsacker':
+        def wrapper(*args):
+            return thomas_fermi(*args) + weizsacker(*args)
     elif name.lower() == 'w1d' or name.lower() == 'weizsacker1d':
         def wrapper(*args):
             return weizsacker(*args, l=1.)
@@ -192,7 +195,7 @@ def harmonic_potential(params: Any, x: Any, Ne: int, k: Any = 1.) -> jax.Array:
 
 
 @partial(jax.jit,  static_argnums=(3,))
-def Nuclei_potential(params: Any, u: Any, Ne: int, T: Callable, mol_info: Any):
+def Nuclei_potential(x: Any, Ne: int, mol_info: Any):
     eps = 1E-4  # 0.2162
 
     @jit
@@ -202,7 +205,6 @@ def Nuclei_potential(params: Any, u: Any, Ne: int, T: Callable, mol_info: Any):
         z = molecule['z']
         return z/r
 
-    x = T(params, u)
     r = vmap(_potential, in_axes=(None, 0), out_axes=-1)(x, mol_info)
     r = jnp.sum(r, axis=-1, keepdims=True)
     return -Ne*r  # lax.expand_dims(r, dimensions=(1,))
