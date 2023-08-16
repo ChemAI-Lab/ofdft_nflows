@@ -220,7 +220,7 @@ def training(t_kin: str = 'TF',
 
         if i % 20 == 0 or i <= 25 or loss_epoch < loss0:
             # 2D figure
-            z = jnp.linspace(-3.5, 3.5, 128)
+            z = jnp.linspace(-2.5, 2.5, 128)
             y = 0.  # 0.699199  # H covalent radius
             xx, zz = jnp.meshgrid(z, z)
             X = jnp.array(
@@ -238,12 +238,14 @@ def training(t_kin: str = 'TF',
             # plt.clf()
             ax1.set_title(
                 f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, I = {norm_val:.3f}')
-            contour1 = ax1.contour(
+            contour1 = ax1.contourf(
                 xx, zz, rho_pred.reshape(xx.shape), levels=25,  vmin=vmin, vmax=vmax)
             # label=r'$N_{e}\;\rho_{NF}(x)$')
+            cbar = fig.colorbar(contour1, ax=ax1)
+            cbar.set_label(r'$N_{e}\rho_{NF}(x)$')
 
-            contour2 = ax2.contour(xx, zz, rho_exact_2D.reshape(xx.shape),
-                                   linestyles='dashed', levels=25, vmin=vmin, vmax=vmax)
+            contour2 = ax2.contourf(xx, zz, rho_exact_2D.reshape(xx.shape),
+                                    linestyles='dashed', levels=25, vmin=vmin, vmax=vmax)
             #    label=r"$\hat{\rho}_{DFT}(x)$")
 
             cbar = fig.colorbar(contour2, ax=ax2)
@@ -299,7 +301,7 @@ def training(t_kin: str = 'TF',
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=1, help="training epochs")
+                        default=10, help="training epochs")
     parser.add_argument("--bs", type=int, default=12, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
