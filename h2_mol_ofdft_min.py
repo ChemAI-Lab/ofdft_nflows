@@ -218,7 +218,50 @@ def training(t_kin: str = 'TF',
             checkpoints.save_checkpoint(
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-        if i % 20 == 0 or i <= 25:
+        if i % 20 == 0 or i <= 25 or loss_epoch < loss0:
+            # 2D figure
+            z = jnp.linspace(-3.5, 3.5, 128)
+            y = 0.  # 0.699199  # H covalent radius
+            xx, zz = jnp.meshgrid(z, z)
+            X = jnp.array(
+                [xx.ravel(), y*jnp.ones_like(xx.ravel()), zz.ravel()]).T
+            rho_pred = Ne*rho_rev(params, X)
+
+            # exact density DFT
+            if i == 0:
+                rho_exact_2D = m.prob(m, X)
+
+            vmin = jnp.min(jnp.stack([rho_exact_2D.ravel(), rho_pred.ravel()]))
+            vmax = jnp.max(jnp.stack([rho_exact_2D.ravel(), rho_pred.ravel()]))
+            # fig, ax = plt.subplots()
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+            # plt.clf()
+            ax1.set_title(
+                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, I = {norm_val:.3f}')
+            contour1 = ax1.contour(
+                xx, zz, rho_pred.reshape(xx.shape), levels=25,  vmin=vmin, vmax=vmax)
+            # label=r'$N_{e}\;\rho_{NF}(x)$')
+
+            contour2 = ax2.contour(xx, zz, rho_exact_2D.reshape(xx.shape),
+                                   linestyles='dashed', levels=25, vmin=vmin, vmax=vmax)
+            #    label=r"$\hat{\rho}_{DFT}(x)$")
+
+            cbar = fig.colorbar(contour2, ax=ax2)
+            cbar.set_label(r'$\rho(x)$')
+
+            ax1.scatter(coords[:, 0], coords[:, 2],
+                        marker='o', color='k', s=35, zorder=2.5)
+            ax2.scatter(coords[:, 0], coords[:, 2],
+                        marker='o', color='k', s=35, zorder=2.5)
+            ax1.set_xlabel('X [Bhor]')
+            ax1.set_ylabel('Z [Bhor]')
+            ax2.set_xlabel('X [Bhor]')
+            ax2.set_ylabel('Z [Bhor]')
+            # plt.legend()
+            plt.tight_layout()
+            plt.savefig(f'{FIG_DIR}/epoch_rho_xz_{i}.png')
+
+            # 1D Figure
             xt = jnp.linspace(-4.5, 4.5, 1000)
             yz = jnp.zeros((xt.shape[0], 2))
             zt = lax.concatenate((yz, xt[:, None]), 1)
@@ -243,12 +286,12 @@ def training(t_kin: str = 'TF',
                      color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
             # plt.plot(xt, v_pot,
             #          ls='--', color='k', label=r'$V(x)$')
-            plt.xlabel('x [Bhor]')
+            plt.xlabel('X [Bhor]')
             # plt.ylim(-5., 1.)
             # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
-            plt.savefig(f'{FIG_DIR}/epoch_{i}_rho.png')
+            plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.png')
 
             # assert 0
 
@@ -256,13 +299,13 @@ def training(t_kin: str = 'TF',
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=2, help="training epochs")
-    parser.add_argument("--bs", type=int, default=512, help="batch size")
+                        default=1, help="training epochs")
+    parser.add_argument("--bs", type=int, default=12, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
     parser.add_argument("--lr", type=float, default=3E-4,
                         help="learning rate")
-    parser.add_argument("--kin", type=str, default='W',
+    parser.add_argument("--kin", type=str, default='tf-w',
                         help="Kinetic energy funcitonal")
     parser.add_argument("--nuc", type=str, default='HGH',
                         help="Nuclear Potential energy funcitonal")
@@ -291,7 +334,7 @@ def main():
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/H2_{t}-{v_pot}-{h_pot}"
+    CKPT_DIR = f"Results/H2_{t.upper()}_{v_pot.upper()}_{h_pot.upper()}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()
