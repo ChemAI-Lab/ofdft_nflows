@@ -176,7 +176,7 @@ def _nuclear(name: str = 'HGH'):
     if name.lower() == 'hgh':
         def wrapper(*args):
             return Nuclei_potential_HGH(*args)
-    elif name.lower() == 'madness':
+    elif name.lower() == 'madness' or name.lower() == 'mdns':
         def wrapper(*args):
             return Nuclei_potential_smooth(*args)
     elif name.lower() == 'harmonic' or name.lower() == 'ho':

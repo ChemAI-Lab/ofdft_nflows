@@ -4,6 +4,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from jax import jit, vmap, hessian, jacrev, lax
+import optax
 
 Array = jax.Array
 BHOR = 1.  # 1.8897259886  # 1AA to BHOR
@@ -70,3 +71,26 @@ def get_scheduler(epochs: int, sched_type: str = 'zero'):
             constant_scheduler_max = optax.constant_schedule(1.0)
             return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
                                         constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
+
+
+if __name__ == '__main__':
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    epochs = 1000
+    total_steps = epochs
+    cosine_decay_scheduler = optax.warmup_cosine_decay_schedule(
+        init_value=1.,
+        peak_value=1.0,
+        warmup_steps=100,
+        decay_steps=epochs,
+        end_value=1E-6,
+    )
+
+    lrs = [cosine_decay_scheduler(i) for i in range(total_steps)]
+
+    plt.scatter(range(total_steps), lrs)
+    plt.title("Cosine Decay Scheduler")
+    plt.ylabel("Learning Rate")
+    plt.xlabel("Epochs/Steps")
+    plt.show()
