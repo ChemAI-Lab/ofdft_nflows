@@ -1,5 +1,6 @@
 import os
 import argparse
+from functools import partial
 from typing import Any, Union
 import pandas as pd
 
@@ -12,11 +13,12 @@ from flax.training import checkpoints
 import optax
 from distrax import MultivariateNormalDiag, Laplace
 
-from ofdft_normflows.functionals import Dirac_exchange, cusp_condition, Hartree_potential_MT
-from ofdft_normflows.functionals import _kinetic, _nuclear
+from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree, _exchange, cusp_condition
+from ofdft_normflows.dft_distrax import DFTDistribution
 from ofdft_normflows.cn_flows import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.cn_flows import Gen_CNFRicky as CNFRicky
+from ofdft_normflows.utils import get_scheduler
 
 import matplotlib.pyplot as plt
 
@@ -24,58 +26,40 @@ Array = Any
 KeyArray = Union[Array, prng.PRNGKeyArray]
 
 jax.config.update("jax_enable_x64", True)
-jax.config.update('jax_disable_jit', True)
+# jax.config.update('jax_disable_jit', True)
 
 BHOR = 1.8897259886  # 1AA to BHOR
 # CKPT_DIR = "Results/GP_pot"
 # FIG_DIR = "Figures/GP_pot"
 
 
-def get_scheduler(epochs: int, sched_type: str = 'zero'):
-    try:
-        float(sched_type)
-        v = float(sched_type)
-        return optax.constant_schedule(v)
-    except ValueError:
-        if sched_type == 'zero':
-            return optax.constant_schedule(0.0)
-        elif sched_type == 'one':
-            return optax.constant_schedule(1.)
-        elif sched_type == 'cos_deacay':
-            return optax.warmup_cosine_decay_schedule(
-                init_value=.0,
-                peak_value=1.0,
-                warmup_steps=1,
-                decay_steps=epochs,
-                end_value=1.0,
-            )
-        elif sched_type == 'mix':
-            constant_scheduler_min = optax.constant_schedule(0.0)
-            cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
-                                                                    div_factor=50., final_div_factor=1.)
-            constant_scheduler_max = optax.constant_schedule(1.0)
-            return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
-                                        constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
+@jax.jit
+def exact_rho(x): return jnp.exp(-2 *
+                                 jnp.linalg.norm(x, axis=1))/jnp.pi
 
 
-# def load_true_results(n_particles: int):
-#     import numpy as onp
-#     d_ = f'Data_1D_GaussMixPot/true_rho_grid_Ne_{n_particles}.txt'
-#     data = jnp.array(onp.loadtxt(d_))
-#     return data
+@ partial(jax.jit,  static_argnums=(2,))
+def compute_integral(params: Any, grid_array: Any, rho: Any, Ne: int, bs: int):
+    grid_coords, grid_weights = grid_array
+    rho_val = Ne*rho(params, grid_coords)
+    return jnp.vdot(grid_weights, rho_val)
 
 
-def training(batch_size: int = 256,
-             epochs: int = 100,
+def training(t_kin: str = 'TF',
              v_pot: str = 'HGH',
-             bool_load_params: bool = False,
-             scheduler_type: str = 'ones'):
+             h_pot: str = 'MT',
+             x_pot: str = 'Dirac',
+             batch_size: int = 256,
+             epochs: int = 100,
+             lr: float = 1E-5,
+             bool_load_params: bool = False):
+    #  scheduler_type: str = 'ones'):
 
     mol_name = 'H'
-    n_particles = 1
+    Ne = 1
     coords = jnp.array([[0., 0., 0.]])
     z = jnp.array([[1.]])
-    # atoms = ['H']
+    atoms = ['H']
     mol = {'coords': coords, 'z': z}
 
     png = jrnd.PRNGKey(0)
@@ -94,18 +78,22 @@ def training(batch_size: int = 256,
     def NODE_fwd(params, batch): return neural_ode(
         params, batch, model_fwd, 0., 1., 3)
 
-    t_functional = _kinetic('TF')
+    t_functional = _kinetic(t_kin)
     v_functional = _nuclear(v_pot)
+    vh_functional = _hartree(h_pot)
+    x_functional = _exchange(x_pot)
 
     mean = jnp.zeros((3,))
     cov = jnp.ones((3,))
     prior_dist = MultivariateNormalDiag(mean, cov)
-    # prior_dist = Laplace()
+
+    m = DFTDistribution(atoms, coords)
+    normalization_array = (m.coords, m.weights)
 
     # optimizer = optax.adam(learning_rate=1E-3)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adam(learning_rate=1E-5),
+        optax.adam(learning_rate=lr),
     )
     opt_state = optimizer.init(params)
 
@@ -135,30 +123,30 @@ def training(batch_size: int = 256,
         return zt
 
     @jax.jit
-    def loss(params, u_samples, ci):
+    def loss(params, u_samples):
         u_samples, up_samples = u_samples[:batch_size,
                                           :], u_samples[batch_size:, :]
-        e_t = (n_particles**(5/3))*t_functional(params, u_samples, rho)
-        e_h = (n_particles**2) * \
-            Hartree_potential_MT(params, u_samples, up_samples, T)
-        e_nuc_v = (n_particles)*v_functional(params, u_samples, T, mol)
-        e_x = (n_particles**(4/3))*Dirac_exchange(params, u_samples, rho)
+        e_t = t_functional(params, u_samples, Ne, rho)
+        e_h = vh_functional(params, u_samples, up_samples, Ne, T)
+        e_nuc_v = v_functional(params, u_samples, Ne, T, mol)
+        e_x = x_functional(params, u_samples, Ne, rho)
 
-        cusp = cusp_condition(params, rho_rev, mol)
+        # cusp = cusp_condition(params, rho_rev, mol)
+        # cusp = 0.
 
-        e = e_t + e_nuc_v + ci*e_h + 0.*e_x + cusp
+        e = e_t + e_nuc_v + e_h + 0.*e_x  # + cusp
         energy = jnp.mean(e)
         return energy, {"t": jnp.mean(e_t),
                         "v": jnp.mean(e_nuc_v),
                         "h": jnp.mean(e_h),
                         "x": jnp.mean(e_x),
-                        "e": energy,
-                        "cusp": cusp}
+                        "e": energy}
+        # "cusp": cusp}
 
     @jax.jit
-    def step(params, opt_state, batch, ci):
+    def step(params, opt_state, batch):
         loss_value, grads = jax.value_and_grad(
-            loss, has_aux=True)(params, batch, ci)
+            loss, has_aux=True)(params, batch)
         updates, opt_state = optimizer.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
         return params, opt_state, loss_value
@@ -185,27 +173,31 @@ def training(batch_size: int = 256,
     df = pd.DataFrame()
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, batch_size)
-    scheduler = get_scheduler(epochs, scheduler_type)
+    # scheduler = get_scheduler(epochs, scheduler_type)
 
     for i in range(epochs+1):
-        ci = scheduler(i)
+        # ci = scheduler(i)
         batch = next(gen_batches)
-        params, opt_state, loss_value = step(params, opt_state, batch, ci)
+        params, opt_state, loss_value = step(params, opt_state, batch)
         loss_epoch, losses = loss_value
+
+        norm_val = compute_integral(
+            params, normalization_array, rho_rev, Ne, 0)
 
         mean_energy = losses['e']
         r_ = {'epoch': i,
               'L': loss_epoch, 'E': mean_energy,
-              'T': losses['t'], 'V': losses['v'], 'H': losses['h'], 'X': losses['x'], 'cusp': losses['cusp'],
-              #   'I': norm_integral, 'ci': ci
+              'T': losses['t'], 'V': losses['v'], 'H': losses['h'], 'X': losses['x'],
+              'I': norm_val,
+              # 'ci': ci,'cusp': losses['cusp'],
               }
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
         df.to_csv(
-            f"{CKPT_DIR}/training_trajectory_{mol_name}_{n_particles}.csv", index=False)
+            f"{CKPT_DIR}/training_trajectory_{mol_name}.csv", index=False)
 
         if i % 5 == 0:
             _s = f"step {i}, L: {loss_epoch:.3f}, E:{mean_energy:.3f}\
-            T: {losses['t']:.5f}, V: {losses['v']:.5f}, H: {losses['h']:.5f}, X: {losses['x']:.5f}, cusp: {losses['cusp']:.5f}"
+            T: {losses['t']:.5f}, V: {losses['v']:.5f}, H: {losses['h']:.5f}, X: {losses['x']:.5f}, I: {norm_val:.3f}"  # cusp: {losses['cusp']:.5f}
             print(_s,
                   file=open(f"{CKPT_DIR}/loss_epochs_{mol_name}.txt", 'a'))
 
@@ -229,19 +221,18 @@ def training(batch_size: int = 256,
             v_pot = f_v(zt)
 
             # exact density n(r) = e−2r /π
-            @jax.jit
-            def exact_rho(x): return jnp.exp(-2 *
-                                             jnp.linalg.norm(x, axis=1))/jnp.pi
-
-            rho_exact = exact_rho(zt)
+            if i == 0:
+                # rho_dft = m.prob(m, zt)
+                rho_exact = exact_rho(zt)
+                norm_exact = jnp.vdot(m.weights, exact_rho(m.coords))
 
             plt.figure(0)
             plt.clf()
             plt.title(
-                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, ci = {ci:.3f}')
+                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}')  # ci = {ci:.3f}
             plt.plot(xt, rho_exact,
-                     color='k', ls=":", label=r"$\hat{\rho}(x) = e^{-2r}/\pi$")
-            plt.plot(xt, n_particles*jnp.exp(rho_pred),
+                     color='k', ls=":", label=r"$\hat{\rho}(x) = e^{-2r}/\pi$ I = %.1f" % norm_exact)
+            plt.plot(xt, Ne*jnp.exp(rho_pred),
                      color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
             # plt.plot(xt, v_pot,
             #  ls='--', color='k', label=r'$V(x)$')
@@ -250,7 +241,7 @@ def training(batch_size: int = 256,
             # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
-            plt.savefig(f'{FIG_DIR}/rho_and_V_pot_{i}.png')
+            plt.savefig(f'{FIG_DIR}/rho_epoch_{i}.png')
 
             # assert 0
 
@@ -262,22 +253,38 @@ def main():
     parser.add_argument("--bs", type=int, default=12, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
+    parser.add_argument("--lr", type=float, default=1E-5,
+                        help="learning rate")
+    parser.add_argument("--kin", type=str, default='TF',
+                        help="Kinetic energy funcitonal")
+    parser.add_argument("--nuc", type=str, default='HGH',
+                        help="Nuclear Potential energy funcitonal")
+    parser.add_argument("--hart", type=str, default='MT',
+                        help="Hartree energy funcitonal")
+    parser.add_argument("--x", type=str, default='Dirac',
+                        help="Exchange energy funcitonal")
     # parser.add_argument("--N", type=int, default=1, help="number of particles")
     # parser.add_argument("--sched", type=str, default='one',
     #                     help="Hartree integral scheduler")
-    parser.add_argument("--sched", type=str, default='one',
-                        help="Hartree integral scheduler")
+    # parser.add_argument("--sched", type=str, default='one',
+    #                     help="Hartree integral scheduler")
     args = parser.parse_args()
 
     batch_size = args.bs
     epochs = args.epochs
     bool_params = args.params
+    lr = args.lr
+
+    t = args.kin
+    v_pot = args.nuc
+    h_pot = args.hart
+    x_pot = args.x_pot
     # n_particles = args.N
-    scheduler_type = args.sched
+    # scheduler_type = args.sched
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/H_OFDFT_Hsched-{scheduler_type}"
+    CKPT_DIR = f"Results/H_OFDFT_{t}-{v_pot}-{h_pot}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()
@@ -288,7 +295,7 @@ def main():
     if not os.path.exists(fwd):
         os.makedirs(fwd)
 
-    training(batch_size, epochs, bool_params, scheduler_type)
+    training(t, v_pot, h_pot, x_pot, batch_size, epochs, lr)
 
 
 if __name__ == "__main__":

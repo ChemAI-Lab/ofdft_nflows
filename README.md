@@ -30,3 +30,11 @@ correct definition of the CNFs
 '''
 git fetch
 git checkout origin/rho_mll -- path/to/file
+
+jax and jaxlib must be 0.4.13 as there is a bug for the 0.4.14
+
+
+
+# plotting CUBE files
+https://forte.readthedocs.io/en/latest/utils/plotting.html
+https://www.brown.edu/Departments/Engineering/Labs/Peterson/tips/ElectronDensity/index.html
