@@ -1,14 +1,11 @@
+from ofdft_normflows.hgh_psuedopotential_params import *
+from typing import List
 import jax
 import jax.numpy as jnp
 from jax import vmap
 from jax.scipy.special import sph_harm, gamma
 
-jax.config.update('jax_disable_jit', True)
-
-H_pp_params = {'Zion': 1., 'rloc': 0.2,
-               'C1': -4.180237, 'C2': 0.725075, 'C3': 0., 'C4': 0., }
-O_pp_params = {'Zion': 6., 'rloc': 0.247621,
-               'C1': -16.580318, 'C2': 2.395701, 'C3': 0., 'C4': 0., }
+# jax.config.update('jax_disable_jit', True)
 
 
 @jax.jit

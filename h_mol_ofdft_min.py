@@ -15,7 +15,7 @@ from distrax import MultivariateNormalDiag, Laplace
 
 from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree, _exchange, cusp_condition
 from ofdft_normflows.dft_distrax import DFTDistribution
-from ofdft_normflows.cn_flows import neural_ode
+from ofdft_normflows.cn_flows import neural_ode, neural_ode_score
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.cn_flows import Gen_CNFRicky as CNFRicky
 from ofdft_normflows.utils import get_scheduler
@@ -34,8 +34,8 @@ BHOR = 1.8897259886  # 1AA to BHOR
 
 
 @jax.jit
-def exact_rho(x): return jnp.exp(-2 *
-                                 jnp.linalg.norm(x, axis=1))/jnp.pi
+def f_h_den(x): return jnp.exp(-2 *
+                               jnp.linalg.norm(x, axis=1))/jnp.pi
 
 
 @ partial(jax.jit,  static_argnums=(2,))
@@ -60,6 +60,7 @@ def training(t_kin: str = 'TF',
     coords = jnp.array([[0., 0., 0.]])
     z = jnp.array([[1.]])
     atoms = ['H']
+    spin = 1
     mol = {'coords': coords, 'z': z}
 
     png = jrnd.PRNGKey(0)
@@ -78,16 +79,15 @@ def training(t_kin: str = 'TF',
     def NODE_fwd(params, batch): return neural_ode(
         params, batch, model_fwd, 0., 1., 3)
 
-    t_functional = _kinetic(t_kin)
-    v_functional = _nuclear(v_pot)
-    vh_functional = _hartree(h_pot)
-    x_functional = _exchange(x_pot)
+    @jax.jit
+    def NODE_fwd_score(params, batch): return neural_ode_score(
+        params, batch, model_fwd, 0., 1., 3)
 
     mean = jnp.zeros((3,))
     cov = jnp.ones((3,))
     prior_dist = MultivariateNormalDiag(mean, cov)
 
-    m = DFTDistribution(atoms, coords)
+    m = DFTDistribution(atoms=atoms, geometry=coords, spin=1)
     normalization_array = (m.coords, m.weights)
 
     # optimizer = optax.adam(learning_rate=1E-3)
@@ -104,11 +104,14 @@ def training(t_kin: str = 'TF',
         params = restored_state
 
     @jax.jit
-    def rho(params, samples):
-        zt0 = samples[:, :-1]
+    def rho_x(params, samples):
         zt, logp_zt = NODE_fwd(params, samples)
-        # logp_x = prior_dist.log_prob(zt0) + logp_zt
-        return jnp.exp(logp_zt)  # logp_x
+        return jnp.exp(logp_zt), zt, None
+
+    @jax.jit
+    def rho_x_score(params, samples):
+        zt, logp_zt, score_zt = NODE_fwd_score(params, samples)
+        return jnp.exp(logp_zt), zt, score_zt
 
     @jax.jit
     def rho_rev(params, x):
@@ -122,19 +125,31 @@ def training(t_kin: str = 'TF',
         zt, _ = NODE_fwd(params, samples)
         return zt
 
+    t_functional = _kinetic(t_kin)
+    v_functional = _nuclear(v_pot)
+    vh_functional = _hartree(h_pot)
+    x_functional = _exchange(x_pot)
+
     @jax.jit
     def loss(params, u_samples):
-        u_samples, up_samples = u_samples[:batch_size,
-                                          :], u_samples[batch_size:, :]
-        e_t = t_functional(params, u_samples, Ne, rho)
-        e_h = vh_functional(params, u_samples, up_samples, Ne, T)
-        e_nuc_v = v_functional(params, u_samples, Ne, T, mol)
-        e_x = x_functional(params, u_samples, Ne, rho)
+        # den_all, x_all = rho_and_x(params, u_samples)
+        den_all, x_all, score_all = rho_x_score(params, u_samples)
 
+        den, denp = den_all[:batch_size], den_all[batch_size:]
+        x, xp = x_all[:batch_size], x_all[batch_size:]
+        score, scorep = score_all[:batch_size], score_all[batch_size:]
+
+        e_t = t_functional(den, score, Ne)
+        e_h = vh_functional(x, xp, Ne)
+        e_nuc_v = v_functional(x, Ne, mol)
+        e_x = x_functional(den, Ne)
+
+        print(e_t.shape, e_h.shape, e_nuc_v.shape, e_x.shape)
         # cusp = cusp_condition(params, rho_rev, mol)
         # cusp = 0.
 
         e = e_t + e_nuc_v + e_h + 0.*e_x  # + cusp
+        print(e_t.shape, e_nuc_v.shape, e_h.shape, e_x.shape)
         energy = jnp.mean(e)
         return energy, {"t": jnp.mean(e_t),
                         "v": jnp.mean(e_nuc_v),
@@ -152,20 +167,22 @@ def training(t_kin: str = 'TF',
         return params, opt_state, loss_value
 
     def batches_generator(key: prng.PRNGKeyArray, batch_size: int):
+        v_score = vmap(jax.jacrev(lambda x:
+                                  prior_dist.log_prob(x)))
         while True:
             _, key = jrnd.split(key)
-            z0_and_logp_z0 = prior_dist.sample_and_log_prob(
-                seed=key, sample_shape=batch_size)
-            z0 = z0_and_logp_z0[0]
-            logp_z0 = z0_and_logp_z0[1][:, None]
-            samples0 = lax.concatenate((z0, logp_z0), 1)
+            samples = prior_dist.sample(seed=key, sample_shape=batch_size)
+            logp_samples = prior_dist.log_prob(samples)
+            score = v_score(samples)
+            samples0 = lax.concatenate(
+                (samples, logp_samples[:, None], score), 1)
 
             _, key = jrnd.split(key)
-            z0_and_logp_z0 = prior_dist.sample_and_log_prob(
-                seed=key, sample_shape=batch_size)
-            z0 = z0_and_logp_z0[0]
-            logp_z0 = z0_and_logp_z0[1][:, None]
-            samples1 = lax.concatenate((z0, logp_z0), 1)
+            samples = prior_dist.sample(seed=key, sample_shape=batch_size)
+            logp_samples = prior_dist.log_prob(samples)
+            score = v_score(samples)
+            samples1 = lax.concatenate(
+                (samples, logp_samples[:, None], score), 1)
 
             yield lax.concatenate((samples0, samples1), 0)
 
@@ -178,18 +195,20 @@ def training(t_kin: str = 'TF',
     for i in range(epochs+1):
         # ci = scheduler(i)
         batch = next(gen_batches)
-        params, opt_state, loss_value = step(params, opt_state, batch)
+        params, opt_state, loss_value = step(params, opt_state, batch)  # , ci
         loss_epoch, losses = loss_value
 
         norm_val = compute_integral(
             params, normalization_array, rho_rev, Ne, 0)
 
+        # norm_integral, log_det_Jac = _integral(params)
         mean_energy = losses['e']
         r_ = {'epoch': i,
               'L': loss_epoch, 'E': mean_energy,
               'T': losses['t'], 'V': losses['v'], 'H': losses['h'], 'X': losses['x'],
+              #   'cusp': losses['cusp'],
               'I': norm_val,
-              # 'ci': ci,'cusp': losses['cusp'],
+              # 'ci': ci
               }
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
         df.to_csv(
@@ -197,51 +216,93 @@ def training(t_kin: str = 'TF',
 
         if i % 5 == 0:
             _s = f"step {i}, L: {loss_epoch:.3f}, E:{mean_energy:.3f}\
-            T: {losses['t']:.5f}, V: {losses['v']:.5f}, H: {losses['h']:.5f}, X: {losses['x']:.5f}, I: {norm_val:.3f}"  # cusp: {losses['cusp']:.5f}
+            T: {losses['t']:.5f}, V: {losses['v']:.5f}, H: {losses['h']:.5f}, X: {losses['x']:.5f}, I: {norm_val:.4f}"  # , cusp: {losses['cusp']:.5f}
             print(_s,
                   file=open(f"{CKPT_DIR}/loss_epochs_{mol_name}.txt", 'a'))
 
         if loss_epoch < loss0:
             params_opt, loss0 = params, loss_epoch
             # checkpointing model model
-            # checkpoints.save_checkpoint(
-            #     ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
+            checkpoints.save_checkpoint(
+                ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-        if i % 20 == 0 or i < 25:
+        if i % 20 == 0 or i <= 25 or loss_epoch < loss0:
+            # 2D figure
+            z = jnp.linspace(-2.5, 2.5, 128)
+            y = 0.  # 0.699199  # H covalent radius
+            xx, zz = jnp.meshgrid(z, z)
+            X = jnp.array(
+                [xx.ravel(), y*jnp.ones_like(xx.ravel()), zz.ravel()]).T
+            rho_pred = Ne*rho_rev(params, X)
+
+            # exact density DFT
+            if i == 0:
+                rho_exact_2D = m.prob(m, X)
+
+            vmin = jnp.min(jnp.stack([rho_exact_2D.ravel(), rho_pred.ravel()]))
+            vmax = jnp.max(jnp.stack([rho_exact_2D.ravel(), rho_pred.ravel()]))
+            # fig, ax = plt.subplots()
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+            # plt.clf()
+            ax1.set_title(
+                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, I = {norm_val:.3f}')
+            contour1 = ax1.contourf(
+                xx, zz, rho_pred.reshape(xx.shape), levels=25,  vmin=vmin, vmax=vmax)
+            # label=r'$N_{e}\;\rho_{NF}(x)$')
+            cbar = fig.colorbar(contour1, ax=ax1)
+            cbar.set_label(r'$N_{e}\rho_{NF}(x)$')
+
+            contour2 = ax2.contourf(xx, zz, rho_exact_2D.reshape(xx.shape),
+                                    linestyles='dashed', levels=25, vmin=vmin, vmax=vmax)
+            #    label=r"$\hat{\rho}_{DFT}(x)$")
+
+            cbar = fig.colorbar(contour2, ax=ax2)
+            cbar.set_label(r'$\rho(x)$')
+
+            ax1.scatter(coords[:, 0], coords[:, 2],
+                        marker='o', color='k', s=35, zorder=2.5)
+            ax2.scatter(coords[:, 0], coords[:, 2],
+                        marker='o', color='k', s=35, zorder=2.5)
+            ax1.set_xlabel('X [Bhor]')
+            ax1.set_ylabel('Z [Bhor]')
+            ax2.set_xlabel('X [Bhor]')
+            ax2.set_ylabel('Z [Bhor]')
+            # plt.legend()
+            plt.tight_layout()
+            plt.savefig(f'{FIG_DIR}/epoch_rho_xz_{i}.png')
+
+            # 1D Figure
             xt = jnp.linspace(-4.5, 4.5, 1000)
             yz = jnp.zeros((xt.shape[0], 2))
-            zt = lax.concatenate((xt[:, None], yz), 1)
-            zt_and_logp_zt = lax.concatenate(
-                (zt, jnp.zeros_like(xt)[:, None]), 1)
-            z0, logp_diff_z0 = NODE_rev(params_opt, zt_and_logp_zt)
-            logp_x = prior_dist.log_prob(z0)[:, None] - logp_diff_z0
-            rho_pred = logp_x  # jnp.exp(logp_x)
+            zt = lax.concatenate((yz, xt[:, None]), 1)
+            rho_pred = rho_rev(params, zt)
+
             def model_identity(params, x): return x
-            def f_v(x): return v_functional(None, zt, model_identity, mol)
+            def f_v(x): return v_functional(zt, Ne, mol)
             v_pot = f_v(zt)
 
-            # exact density n(r) = e−2r /π
+            # exact density DFT
             if i == 0:
-                # rho_dft = m.prob(m, zt)
-                rho_exact = exact_rho(zt)
-                norm_exact = jnp.vdot(m.weights, exact_rho(m.coords))
+                # rho_exact = m.prob(m, zt)
+                rho_exact = f_h_den(zt)
+                norm_dft = jnp.vdot(m.weights, m.prob(m, m.coords))
 
             plt.figure(0)
             plt.clf()
             plt.title(
-                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}')  # ci = {ci:.3f}
+                f'epoch {i}, L = {loss_epoch:.3f}, E = {mean_energy:.3f}, I = {norm_val:.3f}')  # , ci = {ci:.3f}
             plt.plot(xt, rho_exact,
-                     color='k', ls=":", label=r"$\hat{\rho}(x) = e^{-2r}/\pi$ I = %.1f" % norm_exact)
-            plt.plot(xt, Ne*jnp.exp(rho_pred),
+                     color='k', ls=":", label=r"$\hat{\rho}_{DFT}(x)$, I = %.1f" % norm_dft)
+            plt.plot(xt, Ne*rho_pred,
                      color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
             # plt.plot(xt, v_pot,
-            #  ls='--', color='k', label=r'$V(x)$')
-            plt.xlabel('x [Bhor]')
-            # plt.ylim(-10, 2.1)
+            #          ls='--', color='k', label=r'$V(x)$')
+            plt.xlabel('X [Bhor]')
+            # plt.ylim(-5., 1.)
             # plt.ylabel('Energy units')
             plt.legend()
             plt.tight_layout()
-            plt.savefig(f'{FIG_DIR}/rho_epoch_{i}.png')
+            plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.png')
 
             # assert 0
 
@@ -249,13 +310,13 @@ def training(t_kin: str = 'TF',
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=50, help="training epochs")
+                        default=10, help="training epochs")
     parser.add_argument("--bs", type=int, default=12, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
-    parser.add_argument("--lr", type=float, default=1E-5,
+    parser.add_argument("--lr", type=float, default=3E-4,
                         help="learning rate")
-    parser.add_argument("--kin", type=str, default='TF',
+    parser.add_argument("--kin", type=str, default='tf-w',
                         help="Kinetic energy funcitonal")
     parser.add_argument("--nuc", type=str, default='HGH',
                         help="Nuclear Potential energy funcitonal")
@@ -264,8 +325,6 @@ def main():
     parser.add_argument("--x", type=str, default='Dirac',
                         help="Exchange energy funcitonal")
     # parser.add_argument("--N", type=int, default=1, help="number of particles")
-    # parser.add_argument("--sched", type=str, default='one',
-    #                     help="Hartree integral scheduler")
     # parser.add_argument("--sched", type=str, default='one',
     #                     help="Hartree integral scheduler")
     args = parser.parse_args()
@@ -278,13 +337,13 @@ def main():
     t = args.kin
     v_pot = args.nuc
     h_pot = args.hart
-    x_pot = args.x_pot
-    # n_particles = args.N
+    x_pot = args.x
+    # Ne = args.N
     # scheduler_type = args.sched
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/H_OFDFT_{t}-{v_pot}-{h_pot}"
+    CKPT_DIR = f"Results/H_{t.upper()}_{v_pot.upper()}_{h_pot.upper()}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()

@@ -62,7 +62,9 @@ def weizsacker(den: Array, score: Array, Ne: int, l: Any = .2) -> jax.Array:
     Returns:
         jax.Array: _description_
     """
-    return (l*Ne/8.)*score*score
+    # return (l*Ne/8.)*score*score
+    score_sqr = jnp.einsum('ij,ij->i', score, score)
+    return (l*Ne/8.)*lax.expand_dims(score_sqr, (1,))
 
 
 # @partial(jit,  static_argnums=(3,))

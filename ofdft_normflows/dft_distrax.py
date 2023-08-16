@@ -27,13 +27,18 @@ Dtype = Any
 
 class DFTDistribution(distrax.Distribution):
 
-    def __init__(self, atoms: Any, geometry: Any, basis_set: str = 'sto-3g', exc: str = 'b3lyp', dtype_: Dtype = jnp.float32):
+    def __init__(self, atoms: Any, geometry: Any, basis_set: str = 'sto-3g', exc: str = 'b3lyp', spin: int = None, dtype_: Dtype = jnp.float32):
 
         self.atoms = atoms
         self.geometry = geometry
         self.basis_set = basis_set
         self.exc = exc
         self.dtype_ = dtype_
+
+        if spin == None:
+            self.spin = 0
+        else:
+            self.spin = spin
 
         self._grid_level = 2  # change this for larger molecules
         self.mol = self._mol()
@@ -46,7 +51,7 @@ class DFTDistribution(distrax.Distribution):
     def get_molecule(self):
         m_ = ""
         for a, xi in zip(self.atoms, self.geometry):
-            print(a, xi)
+            # print(a, xi)
             mi_ = f'{a} '
             mxi_ = ""
             for xii in xi:
@@ -58,13 +63,16 @@ class DFTDistribution(distrax.Distribution):
     def _mol(self):
         atoms = self.get_molecule()
         mol = gto.M(atom=atoms, basis=self.basis_set,
-                    unit='B')  # , symmetry = True)
+                    unit='B', spin=self.spin)  # , symmetry = True)
         return mol
 
     def _dft(self):
-        mf_hf = dft.RKS(self.mol)
+        if self.spin == 0:
+            mf_hf = dft.RKS(self.mol)
+        else:
+            mf_hf = dft.UKS(self.mol)
         mf_hf.xc = self.exc  # default
-        mf_hf = mf_hf.newton()
+        # mf_hf = mf_hf.newton()
         mf_hf.kernel()
         mf_hf.grids.level = self._grid_level
         mf_hf.grids.build(with_non0tab=True)
@@ -114,7 +122,19 @@ if __name__ == '__main__':
     atoms = ['H', 'H']
     geom = jnp.array([[0., 0., 0.], [0.76, 0., 0.]])
 
+    # atoms = ['H']
+    # geom = jnp.array([[0., 0., 0.]])
+
     m = DFTDistribution(atoms, geom)
+    print(m.mol.spin)
+
+    atoms = ['H']
+    geom = jnp.array([[0., 0., 0.]])
+
+    m = DFTDistribution(atoms=atoms, geometry=geom, spin=1)
+    print(m.mol.spin)
+
+    assert 0
 
     x = jnp.ones((10, 3))
     # print(m.prob(m,geom))
