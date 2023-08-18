@@ -221,9 +221,9 @@ def training(t_kin: str = 'TF',
             checkpoints.save_checkpoint(
                 ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
 
-        if i % 20 == 0 or i <= 25 or loss_epoch < loss0:
+        # if i % 20 == 0 or i <= 25 or loss_epoch < loss0:
             # 2D figure
-            z = jnp.linspace(-2.5, 2.5, 128)
+            z = jnp.linspace(-2.25, 2.25, 128)
             y = 0.  # 0.699199  # H covalent radius
             xx, zz = jnp.meshgrid(z, z)
             X = jnp.array(
