@@ -62,7 +62,7 @@ def get_scheduler(epochs: int, sched_type: str = 'zero', lr: float = 3E-4):
         elif sched_type == 'cos_decay':
             return optax.warmup_cosine_decay_schedule(
                 init_value=lr,
-                peak_value=1.0,
+                peak_value=lr,
                 warmup_steps=150,
                 decay_steps=epochs,
                 end_value=1E-5,
@@ -80,19 +80,24 @@ if __name__ == '__main__':
     import matplotlib
     import matplotlib.pyplot as plt
 
+    lr = 3E-4
     epochs = 1000
+    const_scheduler = get_scheduler(100, lr)
+
     total_steps = epochs
     cosine_decay_scheduler = optax.warmup_cosine_decay_schedule(
-        init_value=1.,
-        peak_value=1.0,
+        init_value=lr,
+        peak_value=lr,
         warmup_steps=250,
         decay_steps=epochs,
         end_value=1E-6,
     )
 
     lrs = [cosine_decay_scheduler(i) for i in range(total_steps)]
+    lrs_const = [const_scheduler(i) for i in range(total_steps)]
 
     plt.scatter(range(total_steps), lrs)
+    plt.scatter(range(total_steps), lrs_const)
     plt.title("Cosine Decay Scheduler")
     plt.ylabel("Learning Rate")
     plt.xlabel("Epochs/Steps")
