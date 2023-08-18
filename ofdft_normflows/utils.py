@@ -68,10 +68,21 @@ def get_scheduler(epochs: int, sched_type: str = 'zero', lr: float = 3E-4):
                 end_value=1E-5,
             )
         elif sched_type == 'mix':
-            constant_scheduler_min = optax.constant_schedule(0.0)
-            cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=1.,
+            init_scheduler_min = optax.warmup_cosine_decay_schedule(
+                init_value=lr,
+                peak_value=lr,
+                warmup_steps=150,
+                decay_steps=int(2*epochs/3),
+                end_value=1E-5,
+            )
+            constant_scheduler_max = optax.constant_schedule(1E-5)
+            return optax.join_schedules([init_scheduler_min,
+                                        constant_scheduler_max], boundaries=[2*epochs/3, 3*epochs/3])
+        elif sched_type == 'mix_old':
+            constant_scheduler_min = optax.constant_schedule(lr)
+            cosine_decay_scheduler = optax.cosine_onecycle_schedule(transition_steps=epochs, peak_value=lr,
                                                                     div_factor=50., final_div_factor=1.)
-            constant_scheduler_max = optax.constant_schedule(1.0)
+            constant_scheduler_max = optax.constant_schedule(1E-5)
             return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
                                         constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
 
@@ -82,7 +93,7 @@ if __name__ == '__main__':
 
     lr = 3E-4
     epochs = 1000
-    const_scheduler = get_scheduler(100, lr)
+    const_scheduler = get_scheduler(epochs, 'mix', lr)
 
     total_steps = epochs
     cosine_decay_scheduler = optax.warmup_cosine_decay_schedule(

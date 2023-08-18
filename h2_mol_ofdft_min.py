@@ -90,7 +90,8 @@ def training(t_kin: str = 'TF',
     lr_sched = get_scheduler(epochs, scheduler_type, lr)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adam(learning_rate=lr_sched),
+        optax.rmsprop(learning_rate=lr_sched)
+        # optax.adam(learning_rate=lr_sched),
     )
     opt_state = optimizer.init(params)
 
