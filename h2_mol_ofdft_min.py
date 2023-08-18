@@ -1,4 +1,5 @@
 import os
+import json
 import argparse
 from functools import partial
 from typing import Any, Union
@@ -47,8 +48,9 @@ def training(t_kin: str = 'TF',
              batch_size: int = 256,
              epochs: int = 100,
              lr: float = 1E-5,
-             bool_load_params: bool = False):
-    #  scheduler_type: str = 'ones'):
+             nn_arch: tuple = (512, 512,),
+             bool_load_params: bool = False,
+             scheduler_type: str = 'ones'):
 
     mol_name = 'H2'
     Ne = 2
@@ -60,8 +62,8 @@ def training(t_kin: str = 'TF',
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(3, (512, 512,), bool_neg=False)
-    model_fwd = CNF(3, (512, 512,), bool_neg=True)
+    model_rev = CNF(3, nn_arch, bool_neg=False)
+    model_fwd = CNF(3, nn_arch, bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -85,9 +87,10 @@ def training(t_kin: str = 'TF',
     normalization_array = (m.coords, m.weights)
 
     # optimizer = optax.adam(learning_rate=1E-3)
+    lr_sched = get_scheduler(epochs, scheduler_type, lr)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adam(learning_rate=lr),
+        optax.adam(learning_rate=lr_sched),
     )
     opt_state = optimizer.init(params)
 
@@ -182,7 +185,6 @@ def training(t_kin: str = 'TF',
     df = pd.DataFrame()
     _, key = jrnd.split(key)
     gen_batches = batches_generator(key, batch_size)
-    # scheduler = get_scheduler(epochs, scheduler_type)
 
     for i in range(epochs+1):
         # ci = scheduler(i)
@@ -301,7 +303,7 @@ def training(t_kin: str = 'TF',
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=10, help="training epochs")
+                        default=1, help="training epochs")
     parser.add_argument("--bs", type=int, default=12, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
@@ -316,8 +318,8 @@ def main():
     parser.add_argument("--x", type=str, default='Dirac',
                         help="Exchange energy funcitonal")
     # parser.add_argument("--N", type=int, default=1, help="number of particles")
-    # parser.add_argument("--sched", type=str, default='one',
-    #                     help="Hartree integral scheduler")
+    parser.add_argument("--sched", type=str, default='const',
+                        help="Hartree integral scheduler")
     # parser.add_argument("--sched", type=str, default='one',
     #                     help="Hartree integral scheduler")
     args = parser.parse_args()
@@ -326,17 +328,19 @@ def main():
     epochs = args.epochs
     bool_params = args.params
     lr = args.lr
+    sched_type = args.sched
 
-    t = args.kin
+    kin = args.kin
     v_pot = args.nuc
     h_pot = args.hart
     x_pot = args.x
+    nn = (512, 512, 512,)
     # Ne = args.N
     # scheduler_type = args.sched
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/H2_{t.upper()}_{v_pot.upper()}_{h_pot.upper()}"
+    CKPT_DIR = f"Results/H2_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_lr_{lr:.1e}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()
@@ -347,7 +351,22 @@ def main():
     if not os.path.exists(fwd):
         os.makedirs(fwd)
 
-    training(t, v_pot, h_pot, x_pot, batch_size, epochs, lr)
+    job_params = {'epohs': epochs,
+                  'batch_size': batch_size,
+                  'lr': lr,
+                  'kin': kin,
+                  'v_nuc': v_pot,
+                  'h_pot': h_pot,
+                  'x_pot': x_pot,
+                  'nn': tuple(nn),
+                  'sched': sched_type,
+                  }
+    with open(f"{CKPT_DIR}/job_params.json", "w") as outfile:
+        json.dump(job_params, outfile, indent=4)
+
+    # assert 0
+    training(kin, v_pot, h_pot, x_pot, batch_size,
+             epochs, lr, nn, bool_params, sched_type)
 
 
 if __name__ == "__main__":
