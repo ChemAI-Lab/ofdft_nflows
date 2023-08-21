@@ -359,6 +359,8 @@ def main():
     global CKPT_DIR
     global FIG_DIR
     CKPT_DIR = f"Results/H_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_lr_{lr:.1e}"
+    if sched_type.lower() != 'c' or sched_type.lower() != 'const':
+        CKPT_DIR = CKPT_DIR + f"_sched_{sched_type.upper()}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
 
     cwd = os.getcwd()
