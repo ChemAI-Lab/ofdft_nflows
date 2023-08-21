@@ -1,9 +1,13 @@
+
 from typing import Any, Callable
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 from jax import jit, vmap, hessian, jacrev, lax
+import jax.random as jrnd
+from jax._src import prng
+
 import optax
 
 Array = jax.Array
@@ -73,9 +77,9 @@ def get_scheduler(epochs: int, sched_type: str = 'zero', lr: float = 3E-4):
                 peak_value=lr,
                 warmup_steps=150,
                 decay_steps=int(2*epochs/3),
-                end_value=1E-5,
+                end_value=1E-6,
             )
-            constant_scheduler_max = optax.constant_schedule(1E-5)
+            constant_scheduler_max = optax.constant_schedule(1E-6)
             return optax.join_schedules([init_scheduler_min,
                                         constant_scheduler_max], boundaries=[2*epochs/3, 3*epochs/3])
         elif sched_type == 'mix_old':
@@ -85,6 +89,44 @@ def get_scheduler(epochs: int, sched_type: str = 'zero', lr: float = 3E-4):
             constant_scheduler_max = optax.constant_schedule(1E-5)
             return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
                                         constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
+
+
+def batches_generator_w_score(key: prng.PRNGKeyArray, batch_size: int, prior_dist: Callable):
+    v_score = vmap(jax.jacrev(lambda x:
+                              prior_dist.log_prob(x)))
+    while True:
+        _, key = jrnd.split(key)
+        samples = prior_dist.sample(seed=key, sample_shape=batch_size)
+        logp_samples = prior_dist.log_prob(samples)
+        score = v_score(samples)
+        samples0 = lax.concatenate(
+            (samples, logp_samples[:, None], score), 1)
+
+        _, key = jrnd.split(key)
+        samples = prior_dist.sample(seed=key, sample_shape=batch_size)
+        logp_samples = prior_dist.log_prob(samples)
+        score = v_score(samples)
+        samples1 = lax.concatenate(
+            (samples, logp_samples[:, None], score), 1)
+
+        yield lax.concatenate((samples0, samples1), 0)
+
+
+def batches_generator(key: prng.PRNGKeyArray, batch_size: int, prior_dist: Callable):
+    while True:
+        _, key = jrnd.split(key)
+        samples = prior_dist.sample(seed=key, sample_shape=batch_size)
+        logp_samples = prior_dist.log_prob(samples)
+        samples0 = lax.concatenate(
+            (samples, logp_samples[:, None]), 1)
+
+        _, key = jrnd.split(key)
+        samples = prior_dist.sample(seed=key, sample_shape=batch_size)
+        logp_samples = prior_dist.log_prob(samples)
+        samples1 = lax.concatenate(
+            (samples, logp_samples[:, None]), 1)
+
+        yield lax.concatenate((samples0, samples1), 0)
 
 
 if __name__ == '__main__':

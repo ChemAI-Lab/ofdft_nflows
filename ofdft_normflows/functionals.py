@@ -113,7 +113,7 @@ def thomas_fermi_1D(den: Array, score: Array, Ne: int) -> jax.Array:
 
 
 def _exchange(name: str = 'dirac'):
-    if name.lower() == 'dirac':
+    if name.lower() == 'dirac' or name.lower() == 'x':
         def wrapper(*args):
             return Dirac_exchange(*args)
     return wrapper
