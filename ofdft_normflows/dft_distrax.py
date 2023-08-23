@@ -27,13 +27,16 @@ Dtype = Any
 
 class DFTDistribution(distrax.Distribution):
 
-    def __init__(self, atoms: Any, geometry: Any, basis_set: str = 'sto-3g', exc: str = 'b3lyp', spin: int = None, dtype_: Dtype = jnp.float32):
+    def __init__(self, atoms: Any, geometry: Any,
+                 basis_set: str = 'sto-3g', exc: str = 'b3lyp', geom_units: str = 'B',
+                 spin: int = None, dtype_: Dtype = jnp.float64):
 
         self.atoms = atoms
         self.geometry = geometry
         self.basis_set = basis_set
         self.exc = exc
         self.dtype_ = dtype_
+        self.geom_units = geom_units
 
         if spin == None:
             self.spin = 0
@@ -63,7 +66,7 @@ class DFTDistribution(distrax.Distribution):
     def _mol(self):
         atoms = self.get_molecule()
         mol = gto.M(atom=atoms, basis=self.basis_set,
-                    unit='B', spin=self.spin)  # , symmetry = True)
+                    unit=self.geom_units, spin=self.spin)  # , symmetry = True)
         return mol
 
     def _dft(self):
