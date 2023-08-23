@@ -75,7 +75,7 @@ class DFTDistribution(distrax.Distribution):
         else:
             mf_hf = dft.UKS(self.mol)
         mf_hf.xc = self.exc  # default
-        # mf_hf = mf_hf.newton()
+        mf_hf = mf_hf.newton()
         mf_hf.kernel()
         mf_hf.grids.level = self._grid_level
         mf_hf.grids.build(with_non0tab=True)
