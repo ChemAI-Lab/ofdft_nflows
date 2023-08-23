@@ -1,12 +1,17 @@
+import os
 import argparse
 from typing import Any, Union
+import pandas as pd
 
+import chex
 import jax
 from jax import lax,  numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
 import optax
+from optax import ema
+
 from flax.training import checkpoints
 from distrax import MultivariateNormalDiag
 from distrax._src.distributions import distribution
@@ -21,11 +26,9 @@ BHOR = 1.8897259886  # 1AA to BHOR
 Array = Any
 KeyArray = Union[Array, prng.PRNGKeyArray]
 
-# jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_debug_nans", True)
-
-CKPT_DIR = "Results/acrolein_MLL"
-FIG_DIR = "Figures/acrolein_MLL"
+jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_debug_nans", True)
+# jax.config.update('jax_disable_jit', True)
 
 
 def batch_generator(prior_dist: distribution, batch_size: int = 512, l: Any = 0, bool_logp_z0_zeros: bool = True):
@@ -72,9 +75,16 @@ def _plotting(rho_pred, rho_true, XY, _label: Any):
     plt.savefig(f'{FIG_DIR}/CNFrho_acrolein_{i}_KLrev.png')
 
 
-def training(batch_size, epochs):
+@chex.dataclass
+class F_values:
+    kl: chex.ArrayDevice
+
+
+def training(batch_size: int, epochs: int):
+    CKPT_DIR_ALL = f"{CKPT_DIR}/checkpoints_all/"
+
     mean = jnp.zeros((3,))
-    cov = 0.1 * jnp.ones((3,))
+    cov = 1. * jnp.ones((3,))
     prior_dist = MultivariateNormalDiag(mean, cov)
     gen_batch = batch_generator(prior_dist, batch_size)
 
@@ -87,7 +97,8 @@ def training(batch_size, epochs):
                       [0.477859,  -1.512556,  0.000000],
                       [2.688665,  -0.434186,  0.000000],
                       [1.880903,  1.213924,  0.000000]])
-    dft_dist = DFTDistribution(atoms, geom)
+    geom = geom*BHOR
+    dft_dist = DFTDistribution(atoms=atoms, geometry=geom, geom_units='A')
 
     def log_target_density(x):
         return jnp.log(dft_dist.prob(dft_dist, x))  # +1E-7
@@ -95,8 +106,9 @@ def training(batch_size, epochs):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    model_rev = CNF(3, (256, 256, 256, 256,), bool_neg=False)
-    model_fwd = CNF(3, (256, 256, 256, 256,), bool_neg=True)
+    nn_arch = (16,)  # (512, 512, 512, )
+    model_rev = CNF(3, nn_arch, bool_neg=False)
+    model_fwd = CNF(3, nn_arch, bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
     params = model_rev.init(key, jnp.array(0.), test_inputs)
 
@@ -108,19 +120,27 @@ def training(batch_size, epochs):
     def NODE_fwd(params, batch): return neural_ode(
         params, batch, model_fwd, 0., 1., 3)
 
-    optimizer = optax.adam(learning_rate=1e-3)
+    @jax.jit
+    def log_rho_x(params, samples):
+        zt, logp_zt = NODE_fwd(params, samples)
+        return logp_zt, zt
+
+    optimizer = optax.adam(learning_rate=3e-4)
     opt_state = optimizer.init(params)
+    loss_ema = ema(decay=0.99)
+    loss_ema_state = loss_ema.init(
+        F_values(kl=jnp.array(0.)))
 
     # load prev parameters
-    restored_state = checkpoints.restore_checkpoint(
-        ckpt_dir=CKPT_DIR, target=params, step=0)
-    params = restored_state
+    # restored_state = checkpoints.restore_checkpoint(
+    #     ckpt_dir=CKPT_DIR, target=params, step=0)
+    # params = restored_state
 
+    # @jax.jit
     def loss(params, samples):
         z0 = samples[:, :-1]
+        logp_x, x = log_rho_x(params, samples)
         zt, logp_zt = NODE_fwd(params, samples)
-        logp_x = prior_dist.log_prob(
-            z0)[:, jnp.newaxis] + logp_zt  # check the sign
         logp_true = log_target_density(zt)
         return jnp.mean(logp_x - logp_true)
 
@@ -133,24 +153,79 @@ def training(batch_size, epochs):
         return params, opt_state, loss_value
 
     loss0 = jnp.inf
-    for i in range(1000+1, 1000+epochs+1):
+    df_ema = pd.DataFrame()
+    for i in range(epochs+1):
 
         batch = next(gen_batch)
         params, opt_state, loss_value = step(params, opt_state, batch)
 
-        if loss_value < loss0:
-            params_opt, loss0 = params, loss_value
-            print(f'step {i}, loss: {loss_value}')
+        # functionals values ema
+        loss_i_ema, loss_ema_state = loss_ema.update(
+            F_values(kl=loss_value), loss_ema_state)
 
-        if i % 100 == 0:
-            print(f'step {i}, loss: {loss_value}')
-            # checkpointing model model
-            checkpoints.save_checkpoint(
-                ckpt_dir=CKPT_DIR, target=params, step=0, overwrite=True)
+        r_ema = {'epoch': i,
+                 'kl': loss_i_ema.kl,
+                 }
+        df_ema = pd.concat(
+            [df_ema, pd.DataFrame(r_ema, index=[0])], ignore_index=True)
+        df_ema.to_csv(
+            f"{CKPT_DIR}/training_trajectory_acrolein_ema.csv", index=False)
+
+        # save models
+        checkpoints.save_checkpoint(
+            ckpt_dir=CKPT_DIR_ALL, target=params, step=i, keep_every_n_steps=10)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Density fitting training")
+    parser.add_argument("--epochs", type=int,
+                        default=10, help="training epochs")
+    parser.add_argument("--bs", type=int, default=512, help="batch size")
+    args = parser.parse_args()
+
+    batch_size = args.bs
+    epochs = args.epochs
+
+    global CKPT_DIR
+    global FIG_DIR
+    CKPT_DIR = "Results/kl_rev_acrolein"
+    FIG_DIR = f"{CKPT_DIR}/Figures"
+
+    cwd = os.getcwd()
+    rwd = os.path.join(cwd, CKPT_DIR)
+    if not os.path.exists(rwd):
+        os.makedirs(rwd)
+    fwd = os.path.join(cwd, FIG_DIR)
+    if not os.path.exists(fwd):
+        os.makedirs(fwd)
+
+    training(batch_size, epochs)
+
+
+if __name__ == '__main__':
+    main()
+
+    # batch_size = 512
+    # epochs = 10000
+
+    # main(batch_size, epochs)
+# https://www.molcas.org/documentation/manual/node28.html
+
+#   O  -1.808864  -0.137998  0.000000
+#   C  1.769114  0.136549  0.000000
+#   C  0.588145  -0.434423  0.000000
+#   C  -0.695203  0.361447  0.000000
+#   H  -0.548852  1.455362  0.000000
+#   H  0.477859  -1.512556  0.000000
+#   H  2.688665  -0.434186  0.000000
+#   H  1.880903  1.213924  0.000000
+
+
+'''
         if i % 100 == 0:
 
             # plotting results
-            f_ = f"{CKPT_DIR}/acrolein_{i}.npy"
+            f_ = f"{CKPT_DIR}/acrolein_epoch_{i}.npy"
             u0 = jnp.linspace(-5., 5., 25)
             u1 = jnp.linspace(-5., 5., 25)
             u0_, u1_ = jnp.meshgrid(u0, u1)
@@ -175,35 +250,4 @@ def training(batch_size, epochs):
                 results.update({'j': {'cnf': rho_pred, 'dft': rho_true}})
                 jnp.save(f_, results, allow_pickle=True)
                 _plotting(rho_pred, rho_true, (u0_, u1_), (f"{j}-{i}", u2j))
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Density fitting training")
-    parser.add_argument("--epochs", type=int,
-                        default=10000, help="training epochs")
-    parser.add_argument("--bs", type=int, default=512, help="batch size")
-    args = parser.parse_args()
-
-    batch_size = args.bs
-    epochs = args.epochs
-
-    training(batch_size, epochs)
-
-
-if __name__ == '__main__':
-    main()
-
-    # batch_size = 512
-    # epochs = 10000
-
-    # main(batch_size, epochs)
-# https://www.molcas.org/documentation/manual/node28.html
-
-#   O  -1.808864  -0.137998  0.000000
-#   C  1.769114  0.136549  0.000000
-#   C  0.588145  -0.434423  0.000000
-#   C  -0.695203  0.361447  0.000000
-#   H  -0.548852  1.455362  0.000000
-#   H  0.477859  -1.512556  0.000000
-#   H  2.688665  -0.434186  0.000000
-#   H  1.880903  1.213924  0.000000
+'''
