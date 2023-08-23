@@ -98,7 +98,7 @@ def training(batch_size: int, epochs: int):
                       [2.688665,  -0.434186,  0.000000],
                       [1.880903,  1.213924,  0.000000]])
     geom = geom*BHOR
-    dft_dist = DFTDistribution(atoms=atoms, geometry=geom, geom_units='A')
+    dft_dist = DFTDistribution(atoms=atoms, geometry=geom, geom_units='B')
 
     def log_target_density(x):
         return jnp.log(dft_dist.prob(dft_dist, x))  # +1E-7
@@ -106,7 +106,7 @@ def training(batch_size: int, epochs: int):
     png = jrnd.PRNGKey(0)
     _, key = jrnd.split(png)
 
-    nn_arch = (16,)  # (512, 512, 512, )
+    nn_arch = (512, 512, 512, )
     model_rev = CNF(3, nn_arch, bool_neg=False)
     model_fwd = CNF(3, nn_arch, bool_neg=True)
     test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
