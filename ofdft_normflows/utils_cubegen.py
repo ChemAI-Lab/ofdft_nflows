@@ -56,12 +56,28 @@ def _density(f_density: callable, mol_pyscf: any, outfile: str = 'caca.cube', sa
     coords = cc.get_coords()
     ngrids = cc.get_ngrids()
     grid = jnp.array(coords)
+    print(grid.shape, type(grid))
 
-    # prior_dist = MultivariateNormalDiag(jnp.zeros(3), jnp.ones(3))
-    # rho = jnp.exp(prior_dist.log_prob(jnp.array(coords)))
     if grid.shape[1] != 3:
         assert 0
-    rho = f_density(grid)
+
+    # rho = f_density(grid)
+    total_data_size = grid.shape[0]
+    batch_size = 1024
+
+    rho_ = jnp.zeros((1, 1))
+    for i in range(0, total_data_size, batch_size):
+        start_idx = i
+        end_idx = jax.lax.min(i + batch_size, total_data_size)
+
+        # Get the current batch of input data
+        input_data = jnp.arange(start_idx, end_idx, dtype=jnp.int32)
+        grid_batch = grid[input_data]
+        rho_batch = f_density(jax.device_put(grid_batch))
+        rho_ = jax.lax.concatenate((rho_, jax.device_get(rho_batch)), 0)
+
+    rho = rho_[1:]
+    print(grid.shape, rho.shape)
     rho = rho.reshape(cc.nx, cc.ny, cc.nz)
 
     if save_cube_file:
@@ -85,7 +101,10 @@ def cube_generator(rho_rev: callable, mol_info: any,
     # pyscf
     mol = gto.M(atom=get_molecule(atoms, coords), basis='sto-3g',
                 unit='B')  # , symmetry = True)
-    cube_density, cube_grid = _density(rho_rev, mol, outfile, save_cube_file)
+    cube_density, cube_grid = _density(f_density=rho_rev, mol_pyscf=mol, outfile=outfile,
+                                       save_cube_file=save_cube_file,
+                                       nx=nx, ny=ny, nz=nz,
+                                       resolution=resolution, margin=margin)
     return cube_density, cube_grid
 
 
@@ -94,8 +113,8 @@ def main():
     from jax import lax
     import jax.random as jrnd
 
-    from ofdft_normflows.cn_flows import neural_ode
-    from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
+    from cn_flows import neural_ode
+    from cn_flows import Gen_CNFSimpleMLP as CNF
 
     mol_name = 'H2'
     Ne = 2
@@ -142,7 +161,7 @@ def main():
     def rho_rev(x): return _rho_rev(params, x)
 
     cube_rho, cube_grid = cube_generator(
-        rho_rev, mol_inf, 'H2_NF.cube', nx=20, ny=20, nz=20)
+        rho_rev, mol_inf, 'H2_NF.cube', nx=10, ny=10, nz=10)
 
 
 if __name__ == "__main__":
