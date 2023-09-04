@@ -15,6 +15,8 @@ from pyscf.tools import cubegen
 import distrax
 from distrax import MultivariateNormalDiag
 
+BHOR = 1.8897259886  # 1AA to BHOR
+
 
 def get_molecule(atoms, geometry):
     m_ = ""
@@ -107,7 +109,7 @@ def cube_generator(rho_rev: callable, mol_info: any,
     return cube_density, cube_grid
 
 
-def main():
+def main_h2():
     import jax
     from jax import lax
     import jax.random as jrnd
@@ -163,27 +165,66 @@ def main():
         rho_rev, mol_inf, 'H2_NF.cube')  # , nx=10, ny=10, nz=10)
 
 
+def main_h2o():
+    import jax
+    from jax import lax
+    import jax.random as jrnd
+
+    from cn_flows import neural_ode
+    from cn_flows import Gen_CNFSimpleMLP as CNF
+
+    mol_name = 'H2O'
+    Ne = 10
+    # O	0.0000000	0.0000000	0.1189120
+    # H	0.0000000	0.7612710	-0.4756480
+    # H	0.0000000	-0.7612710	-0.4756480
+    coords = jnp.array([[0.0,	0.0,	0.1189120],
+                        [0.0,	0.7612710,	-0.4756480],
+                        [0.0,	-0.7612710,	-0.4756480]])*BHOR
+    z = jnp.array([[8.], [1.], [1.]])
+    atoms = ['O', 'H', 'H']
+    mol = {'coords': coords, 'z': z}
+
+    mol_inf = {"mol_name": mol_name, "Ne": Ne,
+               "coords": coords, "atoms": atoms, "z": z
+               }
+
+    # load pre-trained model
+    png = jrnd.PRNGKey(0)
+    _, key = jrnd.split(png)
+
+    model_rev = CNF(3, (512, 512,), bool_neg=False)
+    test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
+    params = model_rev.init(key, jnp.array(0.), test_inputs)
+
+    # CS-MARIANA SERVER change home directory later
+    CKPT_DIR = '/u/rvargas/ofdft_normflows/Results/H2O_TF-W_V_H_X_lr_3.0e-04_sched_MIX_rndW0/checkpoints_all/'
+    restored_state = checkpoints.restore_checkpoint(
+        ckpt_dir=CKPT_DIR, target=params, step=2000)
+    params = restored_state
+
+    # prior-distribution
+    mean = jnp.zeros((3,))
+    cov = jnp.ones((3,))
+    prior_dist = MultivariateNormalDiag(mean, cov)
+
+    @jax.jit
+    def NODE_rev(params, batch): return neural_ode(
+        params, batch, model_rev, -1., 0., 3)
+
+    @jax.jit
+    def _rho_rev(params, x):
+        zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
+        z0, logp_z0 = NODE_rev(params, zt)
+        logp_x = prior_dist.log_prob(z0)[:, None] - logp_z0
+        return jnp.exp(logp_x)  # logp_x
+
+    @jax.jit
+    def rho_rev(x): return _rho_rev(params, x)
+
+    cube_rho, cube_grid = cube_generator(
+        rho_rev, mol_inf, f'{mol_name}_NF.cube')  # , nx=10, ny=10, nz=10)
+
+
 if __name__ == "__main__":
-    main()
-
-
-# def main_old():
-#     mol_name = 'H2'
-#     Ne = 2
-#     coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
-#     z = jnp.array([[1.], [1.]])
-#     atoms = ['H', 'H']
-#     mol = {'coords': coords, 'z': z}
-
-#     mol = gto.M(atom=get_molecule(atoms, coords), basis='sto-3g',
-#                 unit='B')  # , symmetry = True)
-
-#     print(density(mol))
-
-#     mol = gto.M(atom='''O 0.00000000,  0.000000,  0.000000
-#                 H 0.761561, 0.478993, 0.00000000
-#                 H -0.761561, 0.478993, 0.00000000''', basis='6-31g*')
-#     mf = scf.RHF(mol).run()
-#     cubegen.density(mol, 'h2o_den.cube', mf.make_rdm1())  # makes total density
-#     print(cubegen.RESOLUTION)
-#     print(cubegen.BOX_MARGIN)
+    main_h2o()
