@@ -56,7 +56,6 @@ def _density(f_density: callable, mol_pyscf: any, outfile: str = 'caca.cube', sa
     coords = cc.get_coords()
     ngrids = cc.get_ngrids()
     grid = jnp.array(coords)
-    print(grid.shape, type(grid))
 
     if grid.shape[1] != 3:
         assert 0
@@ -161,7 +160,7 @@ def main():
     def rho_rev(x): return _rho_rev(params, x)
 
     cube_rho, cube_grid = cube_generator(
-        rho_rev, mol_inf, 'H2_NF.cube', nx=10, ny=10, nz=10)
+        rho_rev, mol_inf, 'H2_NF.cube')  # , nx=10, ny=10, nz=10)
 
 
 if __name__ == "__main__":
