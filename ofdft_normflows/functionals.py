@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from jax import jit, vmap, hessian, jacrev, lax
 
-from ofdft_normflows.utils import *
+# from ofdft_normflows.utils import *
 
 Array = jax.Array
 BHOR = 1.  # 1.8897259886  # 1AA to BHOR
@@ -202,8 +202,9 @@ def Nuclei_potential(x: Any, Ne: int, mol_info: Any):
 
     @jit
     def _potential(x: Any, molecule: Any):
+        r = x-molecule['coords']
         r = jnp.sqrt(
-            jnp.sum((x-molecule['coords'])*(x-molecule['coords']), axis=1)) + eps
+            jnp.sum(r*r, axis=1)) + eps
         z = molecule['z']
         return z/r
 

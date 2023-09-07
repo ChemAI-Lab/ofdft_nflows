@@ -1,6 +1,7 @@
 import numpy as onp
 import jax
 import jax.numpy as jnp
+from jax import lax
 from flax.training import checkpoints
 
 import pyscf
@@ -87,8 +88,90 @@ def _density(f_density: callable, mol_pyscf: any, outfile: str = 'caca.cube', sa
     return rho, grid
 
 
+def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any, outfile_head: str = 'caca', save_cube_file: bool = True,
+                     nx: int = 80, ny: int = 80, nz: int = 80, resolution: any = None, margin: float = 5.):
+
+    # becke grid
+    mf_hf = dft.RKS(mol_pyscf)
+    mf_hf.kernel()
+    # mf_hf.grids.level = 3
+    int_coords = jax.device_put(jnp.array(mf_hf.grids.coords))
+    int_weights = jax.device_put(jnp.array(mf_hf.grids.weights))
+
+    from functionals import Nuclei_potential
+
+    @jax.jit
+    def f_vnuc(x):
+        return -1.*Nuclei_potential(x=x, Ne=1., mol_info=mol_inf)  # positive
+
+    @jax.jit
+    def integral(x, grid, w):
+        rho_val = f_density(grid)
+        z = lax.expand_dims(1./jnp.linalg.norm(x-grid, axis=1), (1,))
+        integrand = rho_val * z
+        return jnp.vdot(w, integrand)
+    v_integral = jax.vmap(integral, in_axes=(0, None, None))
+
+    from pyscf.pbc.gto import Cell
+    cc = Cube(mol_pyscf, nx, ny, nz, resolution, margin)
+    coords = cc.get_coords()
+    ngrids = cc.get_ngrids()
+    grid = jnp.array(coords)
+
+    if grid.shape[1] != 3:
+        assert 0
+
+    # rho = f_density(grid)
+    total_data_size = grid.shape[0]
+    batch_size = 1024
+
+    rho_ = jnp.zeros((1, 1))
+    mep_ = jnp.zeros((1, 1))
+    vnuc_ = jnp.zeros((1, 1))
+    for i in range(0, total_data_size, batch_size):
+        start_idx = i
+        end_idx = jax.lax.min(i + batch_size, total_data_size)
+
+        # Get the current batch of input data
+        input_data = jnp.arange(start_idx, end_idx, dtype=jnp.int32)
+        grid_batch = grid[input_data]
+        grid_batch = jax.device_put(grid_batch)
+
+        # density
+        rho_batch = f_density(grid_batch)
+        rho_ = jax.lax.concatenate((rho_, jax.device_get(rho_batch)), 0)
+
+        # nuclei potential sum_A Z_a / |r - Ra|
+        vnuc_batch = f_vnuc(grid_batch)
+        vnuc_ = jax.lax.concatenate((vnuc_, jax.device_get(vnuc_batch)), 0)
+
+        # add integration
+        integ_batch = v_integral(grid_batch, int_coords, int_weights)
+        mep_batch = vnuc_batch - integ_batch[:, None]
+        mep_ = jax.lax.concatenate((mep_, jax.device_get(mep_batch)), 0)
+
+    rho, vnuc, mep = rho_[1:], vnuc_[1:], mep_[1:]
+    rho = rho.reshape(cc.nx, cc.ny, cc.nz)
+    vnuc = vnuc.reshape(cc.nx, cc.ny, cc.nz)
+    mep = mep.reshape(cc.nx, cc.ny, cc.nz)
+    if save_cube_file:
+        # Write out density to the .cube file
+        outfile = f"{outfile_head}_rho.cube"
+        cc.write(rho, outfile, comment='Electron density in real space (e/Bohr^3)')
+        outfile = f"{outfile_head}_vnuc.cube"
+        cc.write(vnuc, outfile, comment='Nuclei potential in real space (e/Bohr)')
+        outfile = f"{outfile_head}_mep.cube"
+        cc.write(vnuc, outfile,
+                 comment='Molecular electrostatic potential in real space')
+    return {'rho': rho,
+            'grid': grid,
+            'Vnuc': vnuc,
+            'mep': mep,
+            }
+
+
 def cube_generator(rho_rev: callable, mol_info: any,
-                   outfile: str = 'molecule.cube', save_cube_file: bool = True,
+                   outfile: str = 'molecule', save_cube_file: bool = True,
                    nx: int = 80, ny: int = 80, nz: int = 80, resolution: any = None, margin: float = 5.):
 
     mol_name = mol_info['mol_name']  # 'H2'
@@ -97,16 +180,23 @@ def cube_generator(rho_rev: callable, mol_info: any,
     coords = mol_info['coords']
     z = mol_info['z']  # jnp.array([[1.], [1.]])
     atoms = mol_info['atoms']  # ['H', 'H']
-    # mol = {'coords': coords, 'z': z}
+    mol_ = {'coords': coords, 'z': z}
 
     # pyscf
     mol = gto.M(atom=get_molecule(atoms, coords), basis='sto-3g',
                 unit='B')  # , symmetry = True)
-    cube_density, cube_grid = _density(f_density=rho_rev, mol_pyscf=mol, outfile=outfile,
-                                       save_cube_file=save_cube_file,
-                                       nx=nx, ny=ny, nz=nz,
-                                       resolution=resolution, margin=margin)
-    return cube_density, cube_grid
+
+    cube_arrays = _density_and_mep(f_density=rho_rev, mol_inf=mol_, mol_pyscf=mol,
+                                   outfile_head=outfile,
+                                   save_cube_file=save_cube_file,
+                                   nx=nx, ny=ny, nz=nz,
+                                   resolution=resolution, margin=margin)
+    return cube_arrays
+    # cube_density, cube_grid = _density(f_density=rho_rev, mol_pyscf=mol, outfile=outfile,
+    #                                    save_cube_file=save_cube_file,
+    #                                    nx=nx, ny=ny, nz=nz,
+    #                                    resolution=resolution, margin=margin)
+    # return cube_density, cube_grid
 
 
 def main_h2():
@@ -161,8 +251,9 @@ def main_h2():
     @jax.jit
     def rho_rev(x): return _rho_rev(params, x)
 
-    cube_rho, cube_grid = cube_generator(
-        rho_rev, mol_inf, 'H2_NF.cube')  # , nx=10, ny=10, nz=10)
+    cube_array = cube_generator(
+        rho_rev, mol_inf, 'H2_NF', nx=20, ny=20, nz=10)
+    print(cube_array['mep'].shape, cube_array['rho'].shape)
 
 
 def main_h2o():
@@ -223,8 +314,8 @@ def main_h2o():
     def rho_rev(x): return _rho_rev(params, x)
 
     cube_rho, cube_grid = cube_generator(
-        rho_rev, mol_inf, f'{mol_name}_NF.cube')  # , nx=10, ny=10, nz=10)
+        rho_rev, mol_inf, f'{mol_name}_NF.cube', nx=10, ny=10, nz=10)
 
 
 if __name__ == "__main__":
-    main_h2o()
+    main_h2()

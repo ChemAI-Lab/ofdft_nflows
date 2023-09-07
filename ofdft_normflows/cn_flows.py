@@ -190,7 +190,7 @@ class Gen_CNFSimpleMLP(nn.Module):
         return self.y0 * outputs
 
 
-# @partial(jax.jit,  static_argnums=(2, 3, 4, 5,))
+@partial(jax.jit,  static_argnums=(2, 3, 4, 5,))
 def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim: int):
     # time as [t1 to t0] gives nans for the second term :/
     start_and_end_time = jnp.array([t0, t1])
