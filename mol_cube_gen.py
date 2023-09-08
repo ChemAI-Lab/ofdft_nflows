@@ -23,7 +23,7 @@ def get_mol_info(mol_name: str):
             [[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
         z = jnp.array([[1.], [1.]])
         atoms = ['H', 'H']
-        mol = {'name': mol_name, 'coords': coords,
+        mol = {'mol_name': mol_name, 'coords': coords,
                'z': z, 'atoms': atoms, 'Ne': Ne}
 
     elif mol_name.lower() == 'h2o':
@@ -37,7 +37,7 @@ def get_mol_info(mol_name: str):
                             [0.0,	-0.7612710,	-0.4756480]])*BHOR
         z = jnp.array([[8.], [1.], [1.]])
         atoms = ['O', 'H', 'H']
-        mol = {'name': mol_name, 'coords': coords,
+        mol = {'mol_name': mol_name, 'coords': coords,
                'z': z, 'atoms': atoms, 'Ne': Ne}
     elif mol_name.lower() == 'h':
         mol_name = 'H'
@@ -45,7 +45,7 @@ def get_mol_info(mol_name: str):
         coords = jnp.array([[0., 0., 0.]])
         z = jnp.array([[1.]])
         atoms = ['H']
-        mol = {'name': mol_name, 'coords': coords,
+        mol = {'mol_name': mol_name, 'coords': coords,
                'z': z, 'atoms': atoms, 'Ne': Ne}
 
     return mol
