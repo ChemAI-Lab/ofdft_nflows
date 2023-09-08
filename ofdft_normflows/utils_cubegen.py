@@ -51,7 +51,8 @@ def density(mol, outfile='caca.cube', nx=80, ny=80, nz=80, resolution=None,
     return rho
 
 
-def _density(f_density: callable, mol_pyscf: any, outfile: str = 'caca.cube', save_cube_file: bool = True,
+def _density(f_density: callable, mol_pyscf: any, outfile_head: str = 'caca', rwd: str = './',
+             save_cube_file: bool = True,
              nx: int = 80, ny: int = 80, nz: int = 80, resolution: any = None, margin: float = 5.):
 
     from pyscf.pbc.gto import Cell
@@ -84,11 +85,16 @@ def _density(f_density: callable, mol_pyscf: any, outfile: str = 'caca.cube', sa
 
     if save_cube_file:
         # Write out density to the .cube file
+        outfile = f"{rwd}/rho_{outfile_head}.cube"
         cc.write(rho, outfile, comment='Electron density in real space (e/Bohr^3)')
-    return rho, grid
+    return {'rho': rho,
+            'grid': grid,
+            }
 
 
-def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any, outfile_head: str = 'caca', save_cube_file: bool = True,
+def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any,
+                     outfile_head: str = 'caca', rwd: str = './',
+                     save_cube_file: bool = True,
                      nx: int = 80, ny: int = 80, nz: int = 80, resolution: any = None, margin: float = 5.):
 
     # becke grid
@@ -156,11 +162,11 @@ def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any, outfile_
     mep = mep.reshape(cc.nx, cc.ny, cc.nz)
     if save_cube_file:
         # Write out density to the .cube file
-        outfile = f"{outfile_head}_rho.cube"
+        outfile = f"{rwd}/rho_{outfile_head}.cube"
         cc.write(rho, outfile, comment='Electron density in real space (e/Bohr^3)')
-        outfile = f"{outfile_head}_vnuc.cube"
+        outfile = f"{rwd}/vnuc_{outfile_head}.cube"
         cc.write(vnuc, outfile, comment='Nuclei potential in real space (e/Bohr)')
-        outfile = f"{outfile_head}_mep.cube"
+        outfile = f"{rwd}/mep_{outfile_head}.cube"
         cc.write(vnuc, outfile,
                  comment='Molecular electrostatic potential in real space')
     return {'rho': rho,
@@ -171,7 +177,7 @@ def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any, outfile_
 
 
 def cube_generator(rho_rev: callable, mol_info: any,
-                   outfile: str = 'molecule', save_cube_file: bool = True,
+                   outfile: str = 'molecule', rwd: str = './', save_cube_file: bool = True,
                    nx: int = 80, ny: int = 80, nz: int = 80, resolution: any = None, margin: float = 5.):
 
     mol_name = mol_info['mol_name']  # 'H2'
@@ -187,7 +193,7 @@ def cube_generator(rho_rev: callable, mol_info: any,
                 unit='B')  # , symmetry = True)
 
     cube_arrays = _density_and_mep(f_density=rho_rev, mol_inf=mol_, mol_pyscf=mol,
-                                   outfile_head=outfile,
+                                   outfile_head=outfile, rwd=rwd,
                                    save_cube_file=save_cube_file,
                                    nx=nx, ny=ny, nz=nz,
                                    resolution=resolution, margin=margin)
@@ -197,125 +203,3 @@ def cube_generator(rho_rev: callable, mol_info: any,
     #                                    nx=nx, ny=ny, nz=nz,
     #                                    resolution=resolution, margin=margin)
     # return cube_density, cube_grid
-
-
-def main_h2():
-    import jax
-    from jax import lax
-    import jax.random as jrnd
-
-    from cn_flows import neural_ode
-    from cn_flows import Gen_CNFSimpleMLP as CNF
-
-    mol_name = 'H2'
-    Ne = 2
-    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
-    z = jnp.array([[1.], [1.]])
-    atoms = ['H', 'H']
-    mol = {'coords': coords, 'z': z}
-
-    mol_inf = {"mol_name": mol_name, "Ne": Ne,
-               "coords": coords, "atoms": atoms, "z": z
-               }
-
-    # load pre-trained model
-    png = jrnd.PRNGKey(0)
-    _, key = jrnd.split(png)
-
-    model_rev = CNF(3, (512, 512,), bool_neg=False)
-    test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
-    params = model_rev.init(key, jnp.array(0.), test_inputs)
-
-    CKPT_DIR = '/Users/ravh011/Documents/GitHub/ofdft_normflows/Results_SCRATCH/H2_TF-W_V_H_X_lr_3.0e-04_sched_MIX/checkpoints_all/'
-    restored_state = checkpoints.restore_checkpoint(
-        ckpt_dir=CKPT_DIR, target=params, step=2000)
-    params = restored_state
-    print(params)
-
-    # prior-distribution
-    mean = jnp.zeros((3,))
-    cov = jnp.ones((3,))
-    prior_dist = MultivariateNormalDiag(mean, cov)
-
-    @jax.jit
-    def NODE_rev(params, batch): return neural_ode(
-        params, batch, model_rev, -1., 0., 3)
-
-    @jax.jit
-    def _rho_rev(params, x):
-        zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
-        z0, logp_z0 = NODE_rev(params, zt)
-        logp_x = prior_dist.log_prob(z0)[:, None] - logp_z0
-        return jnp.exp(logp_x)  # logp_x
-
-    @jax.jit
-    def rho_rev(x): return _rho_rev(params, x)
-
-    cube_array = cube_generator(
-        rho_rev, mol_inf, 'H2_NF', nx=20, ny=20, nz=10)
-    print(cube_array['mep'].shape, cube_array['rho'].shape)
-
-
-def main_h2o():
-    import jax
-    from jax import lax
-    import jax.random as jrnd
-
-    from cn_flows import neural_ode
-    from cn_flows import Gen_CNFSimpleMLP as CNF
-
-    mol_name = 'H2O'
-    Ne = 10
-    # O	0.0000000	0.0000000	0.1189120
-    # H	0.0000000	0.7612710	-0.4756480
-    # H	0.0000000	-0.7612710	-0.4756480
-    coords = jnp.array([[0.0,	0.0,	0.1189120],
-                        [0.0,	0.7612710,	-0.4756480],
-                        [0.0,	-0.7612710,	-0.4756480]])*BHOR
-    z = jnp.array([[8.], [1.], [1.]])
-    atoms = ['O', 'H', 'H']
-    mol = {'coords': coords, 'z': z}
-
-    mol_inf = {"mol_name": mol_name, "Ne": Ne,
-               "coords": coords, "atoms": atoms, "z": z
-               }
-
-    # load pre-trained model
-    png = jrnd.PRNGKey(0)
-    _, key = jrnd.split(png)
-
-    model_rev = CNF(3, (512, 512,), bool_neg=False)
-    test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
-    params = model_rev.init(key, jnp.array(0.), test_inputs)
-
-    # CS-MARIANA SERVER change home directory later
-    CKPT_DIR = '/u/rvargas/ofdft_normflows/Results/H2O_TF-W_V_H_X_lr_3.0e-04_sched_MIX_rndW0/checkpoints_all/'
-    restored_state = checkpoints.restore_checkpoint(
-        ckpt_dir=CKPT_DIR, target=params, step=2000)
-    params = restored_state
-
-    # prior-distribution
-    mean = jnp.zeros((3,))
-    cov = jnp.ones((3,))
-    prior_dist = MultivariateNormalDiag(mean, cov)
-
-    @jax.jit
-    def NODE_rev(params, batch): return neural_ode(
-        params, batch, model_rev, -1., 0., 3)
-
-    @jax.jit
-    def _rho_rev(params, x):
-        zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
-        z0, logp_z0 = NODE_rev(params, zt)
-        logp_x = prior_dist.log_prob(z0)[:, None] - logp_z0
-        return jnp.exp(logp_x)  # logp_x
-
-    @jax.jit
-    def rho_rev(x): return _rho_rev(params, x)
-
-    cube_rho, cube_grid = cube_generator(
-        rho_rev, mol_inf, f'{mol_name}_NF.cube', nx=10, ny=10, nz=10)
-
-
-if __name__ == "__main__":
-    main_h2()
