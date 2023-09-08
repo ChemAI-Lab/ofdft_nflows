@@ -104,7 +104,7 @@ def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any,
     int_coords = jax.device_put(jnp.array(mf_hf.grids.coords))
     int_weights = jax.device_put(jnp.array(mf_hf.grids.weights))
 
-    from functionals import Nuclei_potential
+    from ofdft_normflows.functionals import Nuclei_potential
 
     @jax.jit
     def f_vnuc(x):
