@@ -14,6 +14,8 @@ from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 
 BHOR = 1.8897259886  # 1AA to BHOR
 
+jax.config.update("jax_enable_x64", True)
+
 
 def get_mol_info(mol_name: str):
     if mol_name.lower() == 'h2':
@@ -100,124 +102,6 @@ def _plot(mol_name: str, rwd: str, nn_arch: any, nn_id: int):
     # print(cube_array['mep'].shape, cube_array['rho'].shape)
 
 
-'''
-def main_h2():
-
-    mol_name = 'H2'
-    Ne = 2
-    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
-    z = jnp.array([[1.], [1.]])
-    atoms = ['H', 'H']
-    mol = {'coords': coords, 'z': z}
-
-    mol_inf = {"mol_name": mol_name, "Ne": Ne,
-               "coords": coords, "atoms": atoms, "z": z
-               }
-
-    # load pre-trained model
-    png = jrnd.PRNGKey(0)
-    _, key = jrnd.split(png)
-
-    model_rev = CNF(3, (512, 512,), bool_neg=False)
-    test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
-    params = model_rev.init(key, jnp.array(0.), test_inputs)
-
-    CKPT_DIR = '/Users/ravh011/Documents/GitHub/ofdft_normflows/Results_SCRATCH/H2_TF-W_V_H_X_lr_3.0e-04_sched_MIX/'
-    restored_state = checkpoints.restore_checkpoint(
-        ckpt_dir=f"{CKPT_DIR}/checkpoints_all/", target=params, step=2000)
-    params = restored_state
-    print(params)
-
-    # prior-distribution
-    mean = jnp.zeros((3,))
-    cov = jnp.ones((3,))
-    prior_dist = MultivariateNormalDiag(mean, cov)
-
-    @jax.jit
-    def NODE_rev(params, batch): return neural_ode(
-        params, batch, model_rev, -1., 0., 3)
-
-    @jax.jit
-    def _rho_rev(params, x):
-        zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
-        z0, logp_z0 = NODE_rev(params, zt)
-        logp_x = prior_dist.log_prob(z0)[:, None] - logp_z0
-        return jnp.exp(logp_x)  # logp_x
-
-    @jax.jit
-    def rho_rev(x): return _rho_rev(params, x)
-
-    cube_array = cube_generator(
-        rho_rev, mol_inf, 'H2_NF', CKPT_DIR,
-        nx=20, ny=20, nz=10)
-    print(cube_array['mep'].shape, cube_array['rho'].shape)
-
-
-def main_h2o():
-    import jax
-    from jax import lax
-    import jax.random as jrnd
-
-    from cn_flows import neural_ode
-    from cn_flows import Gen_CNFSimpleMLP as CNF
-
-    mol_name = 'H2O'
-    Ne = 10
-    # O	0.0000000	0.0000000	0.1189120
-    # H	0.0000000	0.7612710	-0.4756480
-    # H	0.0000000	-0.7612710	-0.4756480
-    coords = jnp.array([[0.0,	0.0,	0.1189120],
-                        [0.0,	0.7612710,	-0.4756480],
-                        [0.0,	-0.7612710,	-0.4756480]])*BHOR
-    z = jnp.array([[8.], [1.], [1.]])
-    atoms = ['O', 'H', 'H']
-    mol = {'coords': coords, 'z': z}
-
-    mol_inf = {"mol_name": mol_name, "Ne": Ne,
-               "coords": coords, "atoms": atoms, "z": z
-               }
-
-    # load pre-trained model
-    png = jrnd.PRNGKey(0)
-    _, key = jrnd.split(png)
-
-    model_rev = CNF(3, (512, 512,), bool_neg=False)
-    test_inputs = lax.concatenate((jnp.ones((1, 3)), jnp.ones((1, 1))), 1)
-    params = model_rev.init(key, jnp.array(0.), test_inputs)
-
-    # CS-MARIANA SERVER change home directory later
-    CKPT_DIR = '/u/rvargas/ofdft_normflows/Results/H2O_TF-W_V_H_X_lr_3.0e-04_sched_MIX_rndW0/checkpoints_all/'
-    restored_state = checkpoints.restore_checkpoint(
-        ckpt_dir=CKPT_DIR, target=params, step=2000)
-    params = restored_state
-
-    # prior-distribution
-    mean = jnp.zeros((3,))
-    cov = jnp.ones((3,))
-    prior_dist = MultivariateNormalDiag(mean, cov)
-
-    @jax.jit
-    def NODE_rev(params, batch): return neural_ode(
-        params, batch, model_rev, -1., 0., 3)
-
-    @jax.jit
-    def _rho_rev(params, x):
-        zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
-        z0, logp_z0 = NODE_rev(params, zt)
-        logp_x = prior_dist.log_prob(z0)[:, None] - logp_z0
-        return jnp.exp(logp_x)  # logp_x
-
-    @jax.jit
-    def rho_rev(x): return _rho_rev(params, x)
-
-    cube_array = cube_generator(
-        rho_rev, mol_inf, f'{mol_name}_CNF_{nn_id}', CKPT_DIR,
-        nx=20, ny=20, nz=10)
-    print(cube_array['mep'].shape, cube_array['rho'].shape)
-
-'''
-
-
 def main():
     import os
     parser = argparse.ArgumentParser(description="CUBE GEN CALCULATIONS")
@@ -240,7 +124,7 @@ def main():
         for rwdi in rwd_[::-2]:
             for nnid in nnid_[::-1]:
                 rwdi = os.path.join(cwd, rwdi)
-                _plot(mol_name=mol_name, rwd=rwdi, nn_arch=nn, nn_id=nnid)
+                _plot(mol_name=mi, rwd=rwdi, nn_arch=nn, nn_id=nnid)
                 assert 0
 
 
