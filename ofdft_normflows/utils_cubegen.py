@@ -103,6 +103,7 @@ def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any,
     # mf_hf.grids.level = 3
     int_coords = jax.device_put(jnp.array(mf_hf.grids.coords))
     int_weights = jax.device_put(jnp.array(mf_hf.grids.weights))
+    int_rho_val_coords = jax.device_put(f_density(int_coords))
 
     from ofdft_normflows.functionals import Nuclei_potential
 
@@ -111,9 +112,9 @@ def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any,
         return -1.*Nuclei_potential(x=x, Ne=1., mol_info=mol_inf)  # positive
 
     @jax.jit
-    def integral(x, grid, w):
-        rho_val = f_density(grid)
-        z = lax.expand_dims(1./jnp.linalg.norm(x-grid, axis=1), (1,))
+    def integral(x, rho_val, grid, w):
+        z = jnp.linalg.norm(x-grid, axis=1) + 1E-4
+        z = lax.expand_dims(1./z, (1,))
         integrand = rho_val * z
         return jnp.vdot(w, integrand)
     v_integral = jax.vmap(integral, in_axes=(0, None, None))
@@ -152,7 +153,8 @@ def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any,
         vnuc_ = jax.lax.concatenate((vnuc_, jax.device_get(vnuc_batch)), 0)
 
         # add integration
-        integ_batch = v_integral(grid_batch, int_coords, int_weights)
+        integ_batch = v_integral(
+            grid_batch, int_rho_val_coords, int_coords, int_weights)
         mep_batch = vnuc_batch - integ_batch[:, None]
         mep_ = jax.lax.concatenate((mep_, jax.device_get(mep_batch)), 0)
 
@@ -165,7 +167,7 @@ def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any,
         outfile = f"{rwd}/rho_{outfile_head}.cube"
         cc.write(rho, outfile, comment='Electron density in real space (e/Bohr^3)')
         outfile = f"{rwd}/vnuc_{outfile_head}.cube"
-        cc.write(vnuc, outfile, comment='Nuclei potential in real space (e/Bohr)')
+        cc.write(mep, outfile, comment='Nuclei potential in real space (e/Bohr)')
         outfile = f"{rwd}/mep_{outfile_head}.cube"
         cc.write(vnuc, outfile,
                  comment='Molecular electrostatic potential in real space')
