@@ -16,9 +16,10 @@ from distrax import MultivariateNormalDiag
 
 
 from ofdft_normflows.functionals import _kinetic,_exchange, _hartree, _nuclear
-from ofdft_normflows.cn_flows import neural_ode, neural_ode_score
+from ofdft_normflows.flax_ode import neural_ode, neural_ode_score
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.utils import get_scheduler, batches_generator_w_score
+from ofdft_normflows.figures import f
 
 import matplotlib.pyplot as plt
 
@@ -148,7 +149,7 @@ def training(Ne: int = 4,
         ei_ema = energies_i_ema.energy
         zt = jnp.linspace(-20., 20., num=4096)[:, jnp.newaxis]
         norm_val, rho_pred = _integral(params,zt)
-
+        
         r_ = {'epoch': i,
               'E': loss_epoch,
               'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'X':losses.x,

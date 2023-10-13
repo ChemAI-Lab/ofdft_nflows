@@ -18,9 +18,8 @@ from distrax import MultivariateNormalDiag, Laplace
 
 from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree, _exchange, cusp_condition
 from ofdft_normflows.dft_distrax import DFTDistribution
-from ofdft_normflows.cn_flows import neural_ode, neural_ode_score
+from ofdft_normflows.flax_ode import neural_ode, neural_ode_score
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
-from ofdft_normflows.cn_flows import Gen_CNFRicky as CNFRicky
 from ofdft_normflows.utils import get_scheduler, batches_generator_w_score
 
 import matplotlib.pyplot as plt
