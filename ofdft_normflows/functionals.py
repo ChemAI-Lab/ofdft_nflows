@@ -43,14 +43,7 @@ def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array:  # CHECK THIS ON
     rho_val = 1./(den+1E-4)**0.5  # for numerical stability
     return -0.5*jnp.multiply(rho_val, lap_sqrt_den)
 
-@jit
-def soft_coulomb(x:Any,xp:Any,Ne: int):
-    v_coul = 1/(jnp.sqrt( 1 + (x-xp)*(x-xp)))
-    return v_coul*Ne*Ne 
 
-
-
-# @partial(jit,  static_argnums=(3,))
 @jit
 def weizsacker(den: Array, score: Array, Ne: int, l: Any = .2) -> jax.Array:
     """    
@@ -72,7 +65,7 @@ def weizsacker(den: Array, score: Array, Ne: int, l: Any = .2) -> jax.Array:
     return (l*Ne/8.)*lax.expand_dims(score_sqr, (1,))
 
 
-# @partial(jit,  static_argnums=(3,))
+
 @jit
 def thomas_fermi(den: Array, score: Array, Ne: int) -> jax.Array:
     """
@@ -182,7 +175,7 @@ def soft_coulomb(x:Any,xp:Any,Ne: int):
     v_coul = 1/(jnp.sqrt( 1 + (x-xp)*(x-xp)))
     return v_coul*Ne**2
 
-# @partial(jax.jit,  static_argnums=(4, 5, ))
+
 @jit
 def Hartree_potential(x: Any, xp: Any, Ne: int, eps=1E-5):
     z = jnp.sum((x-xp)*(x-xp)+eps, axis=-1, keepdims=True)
