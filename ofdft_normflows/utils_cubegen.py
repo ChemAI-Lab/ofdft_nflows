@@ -32,7 +32,7 @@ def get_molecule(atoms, geometry):
     return m_
 
 
-def density(mol, outfile='caca.cube', nx=80, ny=80, nz=80, resolution=None,
+def density(mol, outfile='mol.cube', nx=80, ny=80, nz=80, resolution=None,
             margin=5.):
 
     from pyscf.pbc.gto import Cell
@@ -51,7 +51,7 @@ def density(mol, outfile='caca.cube', nx=80, ny=80, nz=80, resolution=None,
     return rho
 
 
-def _density(f_density: callable, mol_pyscf: any, outfile_head: str = 'caca', rwd: str = './',
+def _density(f_density: callable, mol_pyscf: any, outfile_head: str = 'mol', rwd: str = './',
              save_cube_file: bool = True,
              nx: int = 80, ny: int = 80, nz: int = 80, resolution: any = None, margin: float = 5.):
 
@@ -93,7 +93,7 @@ def _density(f_density: callable, mol_pyscf: any, outfile_head: str = 'caca', rw
 
 
 def _density_and_mep(f_density: callable, mol_inf: any, mol_pyscf: any,
-                     outfile_head: str = 'caca', rwd: str = './',
+                     outfile_head: str = 'mol', rwd: str = './',
                      save_cube_file: bool = True,
                      nx: int = 80, ny: int = 80, nz: int = 80, resolution: any = None, margin: float = 5.):
 
