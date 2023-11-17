@@ -27,14 +27,28 @@ Cartesian space.
 |:--:|:--:|
 |![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
 
+## Running the code 
+
+# 1-D 
+For Lithium hydride ($\texttt{LiH}$) molecule, simulations can be run in the following way, 
+```
+python LiH.py
+                --epochs <number of iterations>
+                --bs <batch size>
+                --N <number of valence electrons>
+                --sched <learning rate schedule>
+                --R <interatomic distances>
+                --Z <atomic number> 
+```
+
 # 3-D 
-For water (H2O) and Hydrogen (H2) molecules, simulations can be run in the following way,
+For water ($\texttt{H2O}$) and hydrogen ($\texttt{H2}$) molecules, simulations can be run in the following way,
 ```
 python H2_mol_ofdft_min.py
                             --epochs <number of iterations>
                             --bs <batch size>
                             --lr <initial learning rate>
-                            --sched < learning rate schedule>          
+                            --sched <learning rate schedule>          
 ```
 The default kinetic energy functional is the sum of the Thomas-Fermi and Weizsäcker, however, ``` --kin <name> ``` could be used to select others. 
 
