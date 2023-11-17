@@ -1,4 +1,4 @@
-# OF-DFT with Continuous Normalizing Flows
+# OF-DFT with Continuous-time Normalizing Flows
 
 This repository contains the original implementation of the experiments for ["Orbital-Free Density Functional Theory with Continuous Normalizing Flows"](archive).
 
@@ -25,5 +25,17 @@ Cartesian space.
 |:--:|:--:|
 |![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
 
+# 3-D 
+```
+python H2_mol_ofdft_min.py
+                            --epochs <number of iterations>
+                            --bs <batch size>
+                            --lr <initial learning rate>                             
+```
+The default kinetic energy functional is the sum of the Thomas-Fermi and Weisacker, however, ``` --kin <name> ``` could be used to select others. 
+
 ## Dependencies
-1. [jax](jax.readthedocs.io/)
+
+1. [DeepMind JAX Ecosystem]([jax.readthedocs.io/](https://deepmind.google/discover/blog/using-jax-to-accelerate-our-research/))
+2. [flax](flax.readthedocs.io/)
+6. [PySCF](pyscf.org/)
