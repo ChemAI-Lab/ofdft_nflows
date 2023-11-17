@@ -6,7 +6,7 @@ This repository contains the original implementation of the experiments for ["Or
 
 ## Sketch of the algorithm
 
-In orbital free density functional theory, the ground-state density is found by solving a constrained optimization problem,
+In orbital-free density functional theory, the ground-state density is found by solving a constrained optimization problem,
     $$\min_{\rho(\mathbf{x})}  E[\rho(\mathbf{x})] - \mu \left(\int \rho(\mathbf{x}) \mathrm{d} \mathbf{x} - N_{e} \right ) \ \text{s.t. } \rho(\mathbf{x}) \geq 0,$$ 
 where $\mu$ acts as the Lagrange multiplier associated with the normalization constraint on the total number of particles $\left(N_{e}\right)$. These constraints, which enforce both positivity and normalization, 
 ensure the attainment of physically valid solutions.
