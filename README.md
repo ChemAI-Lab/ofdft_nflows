@@ -15,6 +15,8 @@ In this work, we present an alternative constraint-free approach to solve for th
      $$\min_{\rho(\mathbf{x})}  E[\rho(\mathbf{x})] \cancel{- \mu \left(\int \rho(\mathbf{x}) \mathrm{d} \mathbf{x} - N_{e} \right )} \ \text{s.t. } \rho(\mathbf{x}) \geq 0.$$ 
 
 
+We parameterize the electron density $\rho(\vx) := \Ne \rho_{phi}(\vx)$, where $\rho_{phi}$ is a NF, this form is also referred to as the *shape factor*. 
+
 ## Results
 
 We successfully replicate the electronic density for the one-dimensional Lithium hydride molecule with varying interatomic distances, as well as comprehensive simulations of hydrogen and water molecules, all conducted in
