@@ -40,7 +40,7 @@ python LiH.py
                 --R <interatomic distances>
                 --Z <atomic number> 
 ```
-
+The default functionals can be found in the directory [ofdft_normflows](https://github.com/RodrigoAVargasHdz/ofdft_normflows/tree/ml4phys2023/ofdft_normflows#readme)
 # 3-D 
 For water ($\texttt{H2O}$) and hydrogen ($\texttt{H2}$) molecules, simulations can be run in the following way,
 ```
