@@ -11,8 +11,7 @@ In orbital free density functional theory, the ground-state density is found by 
 where $\mu$ acts as the Lagrange multiplier associated with the normalization constraint on the total number of particles $\left(N_{e}\right)$. These constraints, which enforce both positivity and normalization, 
 ensure the attainment of physically valid solutions.
 
-In this work, we present an alternative constrain-free approach to solve for the ground-state density by parametrizing the electron density using normalizing flows (NF).This NF-based ansatz allows us to reframe the OF-DFT variational problem 
-as a Lagrangian-free optimization problem for molecular densities in real space,
+In this work, we present an alternative constrain-free approach to solve for the ground-state density by parametrizing the electron density using normalizing flows (NF). This NF-based ansatz allows us to reframe the OF-DFT variational problem as a Lagrangian-free optimization problem for molecular densities in real space,
      $$\min_{\rho(\mathbf{x})}  E[\rho(\mathbf{x})] \cancel{- \mu \left(\int \rho(\mathbf{x}) \mathrm{d} \mathbf{x} - N_{e} \right )} \ \text{s.t. } \rho(\mathbf{x}) \geq 0.$$ 
 
 
