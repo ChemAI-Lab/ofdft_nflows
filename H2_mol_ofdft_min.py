@@ -351,7 +351,7 @@ def main():
     v_pot = args.nuc
     h_pot = args.hart
     x_pot = args.x
-    nn = (64,)  # (512, 512, 512,)
+    nn = (512, 512, 512,)
     # Ne = args.N
     # scheduler_type = args.sched
 
