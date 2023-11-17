@@ -22,11 +22,6 @@ We parameterize the electron density $\rho(\mathbf{x}) := N_{e}  \rho_{\phi}(\ma
 We successfully replicate the electronic density for the one-dimensional Lithium hydride molecule with varying interatomic distances, as well as comprehensive simulations of hydrogen and water molecules, all conducted in
 Cartesian space.
 
-# 1-D 
-|Ground state electronic density of $\texttt{LiH}$ for various inter-atomic distances.|Transformation of our base distribution into the target distribution.|
-|:--:|:--:|
-|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
-
 ## Running the code 
 
 # 1-D 
@@ -41,6 +36,11 @@ python LiH.py
                 --Z <atomic number> 
 ```
 The default functionals can be found in the directory [ofdft_normflows](https://github.com/RodrigoAVargasHdz/ofdft_normflows/tree/ml4phys2023/ofdft_normflows#readme)
+
+|Ground state electronic density of $\texttt{LiH}$ for various inter-atomic distances.|Transformation of our base distribution into the target distribution.|
+|:--:|:--:|
+|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
+
 # 3-D 
 For water ($\texttt{H2O}$) and hydrogen ($\texttt{H2}$) molecules, simulations can be run in the following way,
 ```
