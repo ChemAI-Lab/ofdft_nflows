@@ -21,6 +21,10 @@ as a Lagrangian-free optimization problem for molecular densities in real space,
 We successfully replicate the electronic density for the one-dimensional Lithium hydride molecule with varying interatomic distances, as well as comprehensive simulations of hydrogen and water molecules, all conducted in
 Cartesian space.
 
+# 1-D 
 |Ground state electronic density of $\texttt{LiH}$ for various inter-atomic distances.|Transformation of our base distribution into the target distribution.|
 |:--:|:--:|
 |![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
+
+#3-D 
+
