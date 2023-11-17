@@ -1,16 +1,21 @@
 ## Energy Functionals 
 
-We first considered a one-dimensional model for diatomic molecules where the total energy functional is defined as,
+We considered a one-dimensional model for diatomic molecules where the total energy functional is defined as,
     $$E[\rho_{\mathcal{M}}] = T[\rho_{\mathcal{M}}] + V_{\text{H}}[\rho_{\mathcal{M}}] +  V_{\text{e-N}}[\rho_{\mathcal{M}}]  + E_{X}[\rho_{\mathcal{M}}].$$ 
     
-The total kinetic energy is estimated by the sum of the Thomas-Fermi ($T_{\text{TF}}$) and  Weizsäcker ($T_{\text{W}}$)  functionals; $T[\rho_{\mathcal{M}}] = T_{\text{TF}}[\rho_{\mathcal{M}}] + T_{\text{W}}[\rho_{\mathcal{M}}]$. 
+The total kinetic energy is estimated by the sum of the Thomas-Fermi ($T_{\text{TF}}$) and  Weizsäcker ($T_{\text{W}}$)  functionals; $T[\rho_{\mathcal{M}}] = T_{\text{TF}}[\rho_{\mathcal{M}}] + T_{\text{W}}[\rho_{\mathcal{M}}]$,
 
-$$T_{\text{TF}}[\rho_{\mathcal{M}}] = \frac{\pi^2}{24} \int \left(\\rho_{\mathcal{M}}(x) \right)^{3} \mathrm{d}x,$$
+$$T_{\text{TF}}[\rho_{\mathcal{M}}] = \frac{3}{10}(3\pi^2)^{2/3} \int \left(\rho_{\mathcal{M}}(x) \right)^{5/3} \mathrm{d}x$$
 
 $$T_{\text{W}}[\rho_{\mathcal{M}}] = \frac{\lambda}{8} \int \frac{(\nabla \rho_{\mathcal{M}}(x))^2}{\rho_{\mathcal{M}}} \mathrm{d}x, $$
 
-where the phenomenological parameter $\lambda$ was set to 0.2. We can rewrite the Weizsäcker functional in terms of the score function, 
-    $$T_{\text{W}}[\rho_{\mathcal{M}}] = \frac{\lambda}{8} \int  \left(\nabla \log \\rho_{\mathcal{M}}(x) \right)^2  \rho_{\mathcal{M}}(x) \mathrm{d}x.$$
+where the phenomenological parameter $\lambda$ was set to 0.2. For 1-D systems the Thomas-Fermi ($T_{\text{TF}}$) functional is, 
+
+$$T_{\text{TF}}[\rho_{\mathcal{M}}] = \frac{\pi^2}{24} \int \left(\\rho_{\mathcal{M}}(x) \right)^{3} \mathrm{d}x.$$ 
+
+We rewrite the Weizsäcker functional in terms of the score function, 
+    $$T_{\text{W}}[\rho_{\mathcal{M}}] = \frac{\lambda}{8} \int  \left(\nabla \log \\rho_{\mathcal{M}}(x) \right)^2  \rho_{\mathcal{M}}(x) \mathrm{d}x,$$
+in order to use use memory-efficient gradients for optmizing $T_{\text{W}}[\rho_{\mathcal{M}}]$. 
 
 The Hartree ($V_{\text{H}}[\rho_{\mathcal{M}}]$) potential and the external potential ($V_{\text{e-N}}[\rho_{\mathcal{M}}]$) functionals both are defined by a soft version,
 
