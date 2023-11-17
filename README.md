@@ -36,7 +36,7 @@ python H2_mol_ofdft_min.py
                             --lr <initial learning rate>
                             --sched < learning rate schedule>          
 ```
-The default kinetic energy functional is the sum of the Thomas-Fermi and Weisacker, however, ``` --kin <name> ``` could be used to select others. 
+The default kinetic energy functional is the sum of the Thomas-Fermi and Weizsäcker, however, ``` --kin <name> ``` could be used to select others. 
 
 ## Dependencies
 
