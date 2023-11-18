@@ -1,13 +1,13 @@
 # Overview of ofdft_normflows 
 
-This `ofdft_normflows` directory contains clean up code regarding the usage of the ODE solver regarding 
+This `ofdft_normflows` directory contains clean up code regarding the energy functionals and the usage of the ODE solver for our 1-D and 3-D case. 
 
 # Energy Functionals 
 
 The `functionals.py` file contains the codes regarding the total energy functional,
     $$E[\rho_{\mathcal{M}}] = T[\rho_{\mathcal{M}}] + V_{\text{H}}[\rho_{\mathcal{M}}] +  V_{\text{e-N}}[\rho_{\mathcal{M}}]  + E_{X}[\rho_{\mathcal{M}}],$$
 
-$\rho_{\mathcal{M}}(\mathbf{x})$ is already define [here](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/README.md). There are differences between the functionals in the 1-D and the 3-D case. 
+where $\rho_{\mathcal{M}}(\mathbf{x})$ is already defined [here](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/README.md). For the 1-D and 3-D case we use the same total energy functional ($E[\rho_{\mathcal{M}}]$) composed with the total kinetic energy ($T[\rho_{\mathcal{M}}]$), the Hartree ($V_{\text{H}}[\rho_{\mathcal{M}}]$) potential, the external potential ($V_{\text{e-N}}[\rho_{\mathcal{M}}]$) and the Dirac exchange ($E_{X}[\rho_{\mathcal{M}}]$) functionals. 
 
 ## 1-D Case
     
@@ -31,7 +31,7 @@ The Hartree ($V_{\text{H}}[\rho_{\mathcal{M}}]$) potential and the external pote
 
 where the atomic numbers $Z_\alpha$ and $Z_\beta$ are the atomic numbers, $N_e$ is the number of valence electrons and $R$ is the interatomic distance. 
 
-And we consider the Dirac exchange functional, 
+And we the Dirac exchange functional ($E_{X}[\rho_{\mathcal{M}}]$), 
     $$E_{\text{X}}[\rho_{\mathcal{M}}] = -\frac{3}{4} \left(\frac{3}{\pi} \right)^{1/3} \int \rho_{\mathcal{M}}(x)^{4/3} \mathrm{d}x.$$
 
 ## 3-D Case 
