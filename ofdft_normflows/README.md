@@ -7,7 +7,7 @@ This `ofdft_normflows` directory contains clean up code regarding the energy fun
 The `functionals.py` file contains the codes regarding the total energy functional,
     $$E[\rho_{\mathcal{M}}] = T[\rho_{\mathcal{M}}] + V_{\text{H}}[\rho_{\mathcal{M}}] +  V_{\text{e-N}}[\rho_{\mathcal{M}}]  + E_{X}[\rho_{\mathcal{M}}],$$
 
-where $\rho_{\mathcal{M}}(\mathbf{x})$ is already defined [here](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/README.md). The total energy functional ($E[\rho_{\mathcal{M}}]$) is composed with the total kinetic energy ($T[\rho_{\mathcal{M}}]$), the Hartree potential ($V_{\text{H}}[\rho_{\mathcal{M}}]$), the external potential ($V_{\text{e-N}}[\rho_{\mathcal{M}}]$) and the Dirac exchange ($E_{X}[\rho_{\mathcal{M}}]$) functionals. Both 1-D and 3-D used the same energy functional and the particularities of each case will be described in the next sections. 
+where $\rho_{\mathcal{M}}(\mathbf{x})$ is already defined [here](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/README.md). The total energy functional ($E[\rho_{\mathcal{M}}]$) is composed with the total kinetic energy ($T[\rho_{\mathcal{M}}]$), the Hartree potential ($V_{\text{H}}[\rho_{\mathcal{M}}]$), the external potential ($V_{\text{e-N}}[\rho_{\mathcal{M}}]$) and the Dirac exchange ($E_{X}[\rho_{\mathcal{M}}]$) functionals. Both 1-D and 3-D used the same energy functional and the differences of each case will be described in the next sections. 
 
 ## 1-D Case
     
