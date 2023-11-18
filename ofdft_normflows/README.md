@@ -35,7 +35,7 @@ And we consider the Dirac exchange functional,
 
 # 3-D Case 
 
-To demonstrate the capability to use CNF for real-space simulations, we considered the optimization of $H_2$ and $H_{2}O$. For both chemical systems, we considered the same total energy functional where the differences are in the Hartree-Potential, $$v_{\text{e-N}}(\mathcal{x}) = -\sum_i \frac{Z_i}{\|\mathcal{x} - \mathbf{R}_i\|},$$ where no soft form approximation was used. 
+To demonstrate the capability to use CNF for real-space simulations, we considered the optimization of $H_2$ and $H_{2}O$. For both chemical systems, we considered the same total energy functional where the differences are in the Hartree-Potential, $$v_{\text{e-N}}(\mathcal{x}) = -\sum_i \frac{Z_i}{\|\mathcal{x} - \mathbf{R}_i\|},$$ where no soft form approximation was used and $Z_i$ is the atomic number of the $i$ atom.
 
 And in the Thomas-Fermi ($T_{\text{TF}}$) functional, 
 
