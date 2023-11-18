@@ -1,14 +1,14 @@
-## Overview of ofdft_normflows 
+# Overview of ofdft_normflows 
 
 This `ofdft_normflows` directory contains clean up code regarding the usage of the ODE solver regarding 
 
-## Energy Functionals 
+#Energy Functionals 
 
 The `functionals.py` file contains the codes regarding the total energy functional,
     $$E[\rho_{\mathcal{M}}] = T[\rho_{\mathcal{M}}] + V_{\text{H}}[\rho_{\mathcal{M}}] +  V_{\text{e-N}}[\rho_{\mathcal{M}}]  + E_{X}[\rho_{\mathcal{M}}],$$
 where there are differences between the functionals in the 1-D and the 3-D case. 
 
-# 1-D Case
+## 1-D Case
     
 Considering a one-dimensional model for diatomic molecules, the total kinetic energy is estimated by the sum of the Thomas-Fermi ($T_{\text{TF}}$) and  Weizsäcker ($T_{\text{W}}$)  functionals; $T[\rho_{\mathcal{M}}] = T_{\text{TF}}[\rho_{\mathcal{M}}] + T_{\text{W}}[\rho_{\mathcal{M}}]$,
 
@@ -33,7 +33,7 @@ where the atomic numbers $Z_\alpha$ and $Z_\beta$ are the atomic numbers, $N_e$ 
 And we consider the Dirac exchange functional, 
     $$E_{\text{X}}[\rho_{\mathcal{M}}] = -\frac{3}{4} \left(\frac{3}{\pi} \right)^{1/3} \int \rho_{\mathcal{M}}(x)^{4/3} \mathrm{d}x.$$
 
-# 3-D Case 
+## 3-D Case 
 
 To demonstrate the capability to use CNF for real-space simulations, we considered the optimization of $H_2$ and $H_{2}O$. For both chemical systems, we considered the same total energy functional where the differences are in the Hartree-Potential, $$v_{\text{e-N}}(\mathcal{x}) = -\sum_i \frac{Z_i}{\|\mathcal{x} - \mathbf{R}_i\|},$$ where no soft form approximation was used and $Z_i$ is the atomic number of the $i$ atom.
 
