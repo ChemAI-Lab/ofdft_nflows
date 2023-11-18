@@ -2,7 +2,7 @@
 
 This `ofdft_normflows` directory contains clean up code regarding the usage of the ODE solver regarding 
 
-#Energy Functionals 
+# Energy Functionals 
 
 The `functionals.py` file contains the codes regarding the total energy functional,
     $$E[\rho_{\mathcal{M}}] = T[\rho_{\mathcal{M}}] + V_{\text{H}}[\rho_{\mathcal{M}}] +  V_{\text{e-N}}[\rho_{\mathcal{M}}]  + E_{X}[\rho_{\mathcal{M}}],$$
