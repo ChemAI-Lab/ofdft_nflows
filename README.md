@@ -37,7 +37,7 @@ python LiH.py
 ```
 The default functionals can be found in the directory [ofdft_normflows](https://github.com/RodrigoAVargasHdz/ofdft_normflows/tree/ml4phys2023/ofdft_normflows#readme)
 
-|Ground state electronic density of $\texttt{LiH}$ for various inter-atomic distances.|The change of $\mathbf{x}(t)$ and $\rho_\phi(\mathbf{x}(t))$ during training.|
+|$\rho_{{\cal M}}$ of $\texttt{LiH}$ for various inter-atomic distances.|The change of $\mathbf{x}(t)$ and $\rho_\phi(\mathbf{x}(t))$ during training.|
 |:--:|:--:|
 |![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
 
