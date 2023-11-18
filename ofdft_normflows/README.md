@@ -6,7 +6,8 @@ This `ofdft_normflows` directory contains clean up code regarding the usage of t
 
 The `functionals.py` file contains the codes regarding the total energy functional,
     $$E[\rho_{\mathcal{M}}] = T[\rho_{\mathcal{M}}] + V_{\text{H}}[\rho_{\mathcal{M}}] +  V_{\text{e-N}}[\rho_{\mathcal{M}}]  + E_{X}[\rho_{\mathcal{M}}],$$
-where there are differences between the functionals in the 1-D and the 3-D case. 
+
+$\rho_{\mathcal{M}}(\mathbf{x})$ is already define [here](https://github.com/RodrigoAVargasHdz/ofdft_normflows/tree/ml4phys2023/ofdft_normflows#readme). There are differences between the functionals in the 1-D and the 3-D case. 
 
 ## 1-D Case
     
@@ -41,4 +42,4 @@ And in the Thomas-Fermi ($T_{\text{TF}}$) functional,
 
 $$T_{\text{TF}}[\rho_{\mathcal{M}}] = \frac{3}{10}(3\pi^2)^{2/3} \int \left(\rho_{\mathcal{M}}(x) \right)^{5/3} \mathrm{d}x.$$
 
-We define the electron density $\rho_{\mathcal{M}}(\mathbf{x})$ as, $\\rho_{\mathcal{M}}(\mathbf{x}) := N_{e} \ \rho_\phi(\mathbf{x})$, where $\rho_{\phi}$ is a NF and $\left(N_{e}\right)$ is the total number of particles. 
+
