@@ -1,6 +1,10 @@
+## Overview of ofdft_normflows 
+
+This `ofdft_normflows` directory contains clean up code regarding the usage of the ODE solver regarding 
+
 ## Energy Functionals 
 
-We considered a one-dimensional model for diatomic molecules where the total energy functional is defined as,
+The `functionals.py` file contains the codes regarding the total energy functional,
     $$E[\rho_{\mathcal{M}}] = T[\rho_{\mathcal{M}}] + V_{\text{H}}[\rho_{\mathcal{M}}] +  V_{\text{e-N}}[\rho_{\mathcal{M}}]  + E_{X}[\rho_{\mathcal{M}}].$$ 
     
 The total kinetic energy is estimated by the sum of the Thomas-Fermi ($T_{\text{TF}}$) and  Weizsäcker ($T_{\text{W}}$)  functionals; $T[\rho_{\mathcal{M}}] = T_{\text{TF}}[\rho_{\mathcal{M}}] + T_{\text{W}}[\rho_{\mathcal{M}}]$,
@@ -27,3 +31,5 @@ where the atomic numbers $Z_\alpha$ and $Z_\beta$ are the atomic numbers, $N_e$ 
 
 We only consider the Dirac exchange functional, 
     $$E_{\text{X}}[\rho_{\mathcal{M}}] = -\frac{3}{4} \left(\frac{3}{\pi} \right)^{1/3} \int \rho_{\mathcal{M}}(x)^{4/3} \mathrm{d}x.$$
+
+We define the electron density $\rho_{\mathcal{M}}(\mathbf{x})$ as, $\\rho_{\mathcal{M}}(\mathbf{x}) := N_{e} \ \rho_\phi(\mathbf{x})$, where $\rho_{\phi}$ is a NF and $\left(N_{e}\right)$ is the total number of particles. 
