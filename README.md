@@ -15,7 +15,7 @@ In this work, we present an alternative constraint-free approach to solve for th
      $$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}] \cancel{- \mu \left(\int \rho_\mathcal{M} \mathrm{d} \mathbf{x} - N_{e} \right )} \ \text{s.t. } \rho_\mathcal{M} \geq 0.$$ 
 
 
-We parameterize the electron density $\rho_\mathcal{M} := N_{e}  \rho_{\phi}(\mathbf{x})$, where $\rho_{\phi}$ is a NF, this form is also referred to as the *shape factor*. The samples are drawn from the base distribution $\rho_0$ and transformed by a CNF, $$\mathcal{x} = T_\phi(\mathcal{z}) := \mathcal{z} + \int_{t_{0}}^{T} g_\phi(\mathcal{z}(t),t) \mathrm{d}t.$$
+We parameterize the electron density $\rho_\mathcal{M} := N_{e}  \rho_{\phi}(\mathbf{x})$, where $\rho_{\phi}$ is a NF, this form is also referred to as the *shape factor*. The samples are drawn from the base distribution $\rho_0$ and transformed by, $$\mathcal{x} = T_\phi(\mathcal{z}) := \mathcal{z} + \int_{t_{0}}^{T} g_\phi(\mathcal{z}(t),t) \mathrm{d}t.$$
 
 ## Results
 
