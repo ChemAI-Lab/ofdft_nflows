@@ -26,7 +26,7 @@ Cartesian space.
 
 ## Running the code 
 
-# 1-D 
+## 1-D 
 For Lithium hydride ($\texttt{LiH}$) molecule, simulations can be run in the following way, 
 ```
 python LiH.py
@@ -43,7 +43,7 @@ The default functionals can be found in the directory [ofdft_normflows](https://
 |:--:|:--:|
 |![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
 
-# 3-D 
+## 3-D 
 For water ($\texttt{H2O}$) and hydrogen ($\texttt{H2}$) molecules, simulations can be run in the following way,
 ```
 python H2_mol_ofdft_min.py
