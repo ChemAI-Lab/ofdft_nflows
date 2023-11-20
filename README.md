@@ -60,5 +60,5 @@ The default kinetic energy functional is the sum of the [Thomas-Fermi and Weizs√
 2. [Flax](flax.readthedocs.io/)
 3. [PySCF](pyscf.org/)
 
-This is a lybrary that is currently being build.
+This is a library that is currently being build.
 
