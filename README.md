@@ -58,4 +58,7 @@ The default kinetic energy functional is the sum of the [Thomas-Fermi and Weizs√
 
 1. [DeepMind JAX Ecosystem]([jax.readthedocs.io/](https://deepmind.google/discover/blog/using-jax-to-accelerate-our-research/))
 2. [Flax](flax.readthedocs.io/)
-6. [PySCF](pyscf.org/)
+3. [PySCF](pyscf.org/)
+
+This is a lybrary that is currently being build.
+
