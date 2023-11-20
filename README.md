@@ -37,7 +37,7 @@ python LiH.py
                 --R <interatomic distances>
                 --Z <atomic number> 
 ```
-The default functionals can be found in the directory [ofdft_normflows](https://github.com/RodrigoAVargasHdz/ofdft_normflows/tree/ml4phys2023/ofdft_normflows#readme)
+The default functionals can be found in the directory [ofdft_normflows](https://github.com/RodrigoAVargasHdz/ofdft_normflows/tree/ml4phys2023/ofdft_normflows#readme).
 
 |$\rho_{{\cal M}}$ of $\texttt{LiH}$ for various inter-atomic distances.|The change of $\rho_{{\cal M}}$ and $T_\phi(\mathcal{z})$ during training.|
 |:--:|:--:|
