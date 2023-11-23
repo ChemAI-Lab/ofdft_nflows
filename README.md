@@ -13,7 +13,7 @@ ensure the attainment of physically valid solutions.
 
 In this work, we present an alternative constraint-free approach to solve for the ground-state density by a continuous-time normalizing flow (NF) ansatz, allowing us to reframe the OF-DFT variational problem as a Lagrangian-free optimization problem for molecular densities in real space,
 
-$$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}] \cancel{- \mu \left(\int \rho_\mathcal{M} \mathrm{d} \mathbf{x} - N_{e} \right )} \ \text{s.t. } \rho_\mathcal{M} \geq 0,$$  
+$$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}] \cancel{- \mu \left(\int \rho_\mathcal{M} \mathrm{d} \mathbf{x} - N_{e} \right )} $$  
 
 <!--- 
 $$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}],$$
