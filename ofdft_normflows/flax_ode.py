@@ -69,6 +69,7 @@ class ODEBlock(nn.Module):
             t_grid = jnp.array([-1.,.0])
 
         # f_ode = lambda params, x, t: t0*ode_fun.apply(params,t0*t,x)
+        @jit
         def f_ode(params,states,t):
             x,logp_x = states[:self.in_out_dims], states[self.in_out_dims:]
             def f(x): return ode_fun.apply(params,t0*t,x)
@@ -103,6 +104,7 @@ class ODEBlockwScore(nn.Module):
           t_grid = jnp.array([-1.,0.])
 
         # f_ode = lambda params, x, t: t0*ode_fun.apply(params,t0*t,x)
+        @jit
         def _f_ode(params,states,t):
             x,logp_x = states[:self.in_out_dims], states[self.in_out_dims:]
             def f(x): return ode_fun.apply(params,t,x)
@@ -112,6 +114,7 @@ class ODEBlockwScore(nn.Module):
             # return lax.concatenate((lax.expand_dims(dz,dimensions=(1,)), dlogp_z_dt), 1)#self.t0
             return dz,dlogp_z_dt
 
+        @jit
         def f_ode(params,state,t):
             state, score = state[:-self.in_out_dims], state[-self.in_out_dims:]
             dx_and_dlopz, _f_vjp = jax.vjp(lambda state: _f_ode(params,state,t0*t), state)
