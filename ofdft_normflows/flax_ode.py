@@ -207,6 +207,26 @@ if __name__ == '__main__':
     state_z1 = model_rev.apply(params,state_x)
     print(state_z1)
     
+
+    z = prior_dist._sample_n(key,512)
+    logp_z = prior_dist.log_prob(z)
+    score_z = vmap(grad(prior_dist.log_prob))(z)
+    state = jnp.column_stack((z,logp_z[:,None]))
+    state_wscore = jnp.column_stack((state,score_z))
+    
+    @jit 
+    def loss(params,batch):
+        x_logp_x_score = model_fwd.apply(params,batch)
+        score = x_logp_x_score[:,-dimension:]
+        logp_x = x_logp_x_score[:,dimension:dimension+1]
+        return jnp.mean(weizsacker(jnp.exp(logp_x),score, 1))
+    
+    
+    print(jax.value_and_grad(loss)(params,state_wscore))
+    
+    
+    
+    
     
     
     
