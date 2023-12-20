@@ -16,7 +16,7 @@ from distrax import MultivariateNormalDiag
 
 
 from ofdft_normflows.functionals import _kinetic,_exchange, _hartree, _nuclear
-from ofdft_normflows.flax_ode import neural_ode, neural_ode_score
+from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.utils import get_scheduler, batches_generator_w_score
 from ofdft_normflows.figures import f
@@ -100,7 +100,9 @@ def training(Ne: int = 4,
 
     thomas_fermi_1d = _kinetic('tf1d')
     weizsacker_1d = _kinetic('w1d')
-    x_functional = _exchange('dirac')
+    #x_functional = _exchange('dirac')
+    c_functional = _exchange('c')
+    x_functional = _exchange('x')
     vnuc = _nuclear('attraction')
     hart = _hartree('soft_coulomb')
 
@@ -115,14 +117,16 @@ def training(Ne: int = 4,
         tw = weizsacker_1d(den,score,Ne)
         c_v = hart(x,xp,Ne)
         c_a = vnuc(x, R, Z_alpha, Z_beta,Ne)
-        x = x_functional(den,Ne)
-        e = tf + tw + c_a + c_v + x 
+        # x = x_functional(den,Ne)
+        # c = c_functional(den,Ne)
+        LDA = x_functional(den,Ne) +  c_functional(den,Ne)
+        e = tf + tw + c_a + c_v + LDA
         energy = jnp.mean(e)
         f_values = F_values(energy=energy,
                             kin=jnp.mean(tf+tw),
                             vnuc=jnp.mean(c_a),
                             hart=jnp.mean(c_v),
-                            x= jnp.mean(x),
+                            x= jnp.mean(LDA),
                             )
         return energy, f_values
 
@@ -195,7 +199,7 @@ def main():
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
-    parser.add_argument("--N", type=int, default=4, help="number of particles")
+    parser.add_argument("--N", type=int, default=2, help="number of particles")
     parser.add_argument("--sched", type=str, default='mix',
                         help="Hartree integral scheduler")
     parser.add_argument("--R", type=float, default=10., help="R parameter")
