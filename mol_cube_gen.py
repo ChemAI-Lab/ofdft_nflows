@@ -9,7 +9,7 @@ from flax.training import checkpoints
 from distrax import MultivariateNormalDiag
 
 from ofdft_normflows.utils_cubegen import cube_generator
-from ofdft_normflows.flax_ode import neural_ode
+from ofdft_normflows.jax_ode import neural_ode
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 
 BHOR = 1.8897259886  # 1AA to BHOR
