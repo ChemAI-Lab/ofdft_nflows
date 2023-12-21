@@ -214,65 +214,7 @@ class FullODENet(nn.Module):
                             tol=self.tol)(inputs, ode_func_params)
         return x
 
-if __name__ == '__main__':
 
-    import jax.random as jrnd
-    from jax import grad
-    from distrax import MultivariateNormalDiag
-    from functionals import weizsacker
-    
-    png = jrnd.PRNGKey(0)
-    _, key = jrnd.split(png)
-    
-    xyz = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
-
-    # fwd and rev test
-    dimension = 3
-    prior_dist = MultivariateNormalDiag(jnp.zeros(dimension), 1.*jnp.ones(dimension))
-    z = prior_dist._sample_n(key,2)
-    logp_z = prior_dist.log_prob(z)
-    score_z = vmap(grad(prior_dist.log_prob))(z)
-    state = jnp.column_stack((z,logp_z[:,None]))
-    state_wscore = jnp.column_stack((state,score_z))
-    print(state_wscore)
-    print('---')
-    
-    model_fwd = FullODENet(dimension,(512,512,512,),True,True,xyz_nuclei=xyz)
-    params = model_fwd.init(key,state_wscore[:1])
-    state_x = model_fwd.apply(params,state_wscore)
-    
-    print(state_x)
-    
-    model_rev = FullODENet(dimension,(512,512,512,),False,True,xyz_nuclei=xyz)
-    _ = model_rev.init(key,state_wscore[:1])
-    # _ = model_rev.init(key,state[:1])
-    state_z1 = model_rev.apply(params,state_x)
-    print(state_z1)
-    # assert 0
-
-    # grad test
-    z = prior_dist._sample_n(key,128)
-    logp_z = prior_dist.log_prob(z)
-    score_z = vmap(grad(prior_dist.log_prob))(z)
-    state = jnp.column_stack((z,logp_z[:,None]))
-    state_wscore = jnp.column_stack((state,score_z))
-    
-    @jit 
-    def loss(params,batch):
-        x_logp_x_score = model_fwd.apply(params,batch)
-        score = x_logp_x_score[:,-dimension:]
-        logp_x = x_logp_x_score[:,dimension:dimension+1]
-        return jnp.mean(weizsacker(jnp.exp(logp_x),score, 1))
-    
-    
-    print(loss(params,state_wscore))
-    print(jax.value_and_grad(loss)(params,state_wscore))
-    
-    assert 0
-    
-    
-    
-    
     
     
     
