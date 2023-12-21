@@ -114,25 +114,41 @@ def _exchange(name: str = 'dirac'):
     if name.lower() == 'dirac':
         def wrapper(*args):
             return Dirac_exchange(*args)
-    elif name.lower() == 'lda' or name.lower() == 'local_density_app':
+    elif name.lower() == 'c' or name.lower() == 'local_density_app':
+        def wrapper(*args):
+            return LDA_1D(*args)
+    elif name.lower() == 'x' or name.lower() == 'local_density_gas':
         def wrapper(*args):
             return LDA_1D(*args)
     return wrapper
 
 @jit 
-def LDA_1D(den: Array, Ne: int, xi: int):
+def Uniform_gas(den: Array, Ne: int): 
     rs = 1/(2*Ne*den)
-    B = 0.
+    kf = (jnp.pi * rs)/2.
+    small_positive_value = 1e-10  # small positive value to avoid singularity at y = 0
+    large_number = 1000.0
+    y = jnp.linspace(small_positive_value,large_number,512)
+    fs = jnp.sin(y)**2 / (y**2 * jnp.sqrt(kf**2 + y**2))
+    vmap_result = jax.vmap(lambda z: jnp.trapz(fs, y))(kf)
+    return -rs*vmap_result
+
+@jit
+def LDA_1D(den: Array, Ne: int):
+    rs = 1/(2*Ne*den)
     A = 18.40 
+    B = 0.
     C = 7.501
     D = 0.10185
     E = 0.012827
     alpha = 1.511
     beta = 0.258
     m = 4.424
-    Numerator = (rs + E*rs*rs)
-    Denominator = (A+B*rs+C*rs*rs+D*rs*rs*rs)
-    e_c_0 = -(1/2)*(Numerator/Denominator) * jnp.log(1 + alpha*rs + beta*rs*m)
+    rs_squared = rs**2
+    rs_cubed = rs**3
+    Numerator = (rs + E*rs_squared)
+    Denominator = (A+B*rs+C*rs_squared+D*rs_cubed)
+    e_c_0 = -(1/2)*(Numerator/Denominator) * jnp.log(1 + alpha*rs + beta*rs**m)
     return Ne*e_c_0 
 
 @jit
