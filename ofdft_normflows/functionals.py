@@ -65,7 +65,6 @@ def weizsacker(den: Array, score: Array, Ne: int, l: Any = .2) -> jax.Array:
     return (l*Ne/8.)*lax.expand_dims(score_sqr, (1,))
 
 
-
 @jit
 def thomas_fermi(den: Array, score: Array, Ne: int) -> jax.Array:
     """
@@ -103,7 +102,7 @@ def thomas_fermi_1D(den: Array, score: Array, Ne: int) -> jax.Array:
     Returns:
         jax.Array: _description_
     """
-    
+
     den_sqr = den*den
     l = (jnp.pi*jnp.pi)/24.
     return l*(Ne**3)*den_sqr
@@ -122,21 +121,23 @@ def _exchange(name: str = 'dirac'):
             return LDA_1D(*args)
     return wrapper
 
-@jit 
-def Uniform_gas(den: Array, Ne: int): 
+
+@jit
+def Uniform_gas(den: Array, Ne: int):
     rs = 1/(2*Ne*den)
     kf = (jnp.pi * rs)/2.
     small_positive_value = 1e-10  # small positive value to avoid singularity at y = 0
     large_number = 1000.0
-    y = jnp.linspace(small_positive_value,large_number,512)
+    y = jnp.linspace(small_positive_value, large_number, 512)
     fs = jnp.sin(y)**2 / (y**2 * jnp.sqrt(kf**2 + y**2))
     vmap_result = jax.vmap(lambda z: jnp.trapz(fs, y))(kf)
     return -rs*vmap_result
 
+
 @jit
 def LDA_1D(den: Array, Ne: int):
     rs = 1/(2*Ne*den)
-    A = 18.40 
+    A = 18.40
     B = 0.
     C = 7.501
     D = 0.10185
@@ -149,7 +150,8 @@ def LDA_1D(den: Array, Ne: int):
     Numerator = (rs + E*rs_squared)
     Denominator = (A+B*rs+C*rs_squared+D*rs_cubed)
     e_c_0 = -(1/2)*(Numerator/Denominator) * jnp.log(1 + alpha*rs + beta*rs**m)
-    return Ne*e_c_0 
+    return Ne*e_c_0
+
 
 @jit
 def Dirac_exchange(den: Array, Ne: int) -> jax.Array:
@@ -177,7 +179,7 @@ def _hartree(name: str = 'mt'):
         def wrapper(*args):
             return Hartree_potential_MT(*args)
     elif name.lower() == 'soft_coulomb' or name.lower() == 'softc':
-        def wrapper(*args): 
+        def wrapper(*args):
             return soft_coulomb(*args)
     else:  # full
         def wrapper(*args):
@@ -187,8 +189,8 @@ def _hartree(name: str = 'mt'):
 
 
 @jit
-def soft_coulomb(x:Any,xp:Any,Ne: int):
-    v_coul = 1/(jnp.sqrt( 1 + (x-xp)*(x-xp)))
+def soft_coulomb(x: Any, xp: Any, Ne: int):
+    v_coul = 1/(jnp.sqrt(1 + (x-xp)*(x-xp)))
     return v_coul*Ne**2
 
 
@@ -197,6 +199,16 @@ def Hartree_potential(x: Any, xp: Any, Ne: int, eps=1E-5):
     z = jnp.sum((x-xp)*(x-xp)+eps, axis=-1, keepdims=True)
     z = 1./(z**0.5)
     return 0.5*(Ne**2)*z
+
+
+@jit
+def Hartree_potential_sb(x: Any, Ne: int):
+    z = x[None, :, :] - x[:, None, :]
+    zz = jnp.linalg.norm(z, axis=-1)
+    i0 = jnp.triu_indices_from(zz, 1)
+    h = lax.expand_dims(zz[i0], dimensions=(1,))
+    h = 1./(jnp.sqrt(h))
+    return 0.5*(Ne**2)*h
 
 
 @jit
@@ -233,10 +245,13 @@ def _nuclear(name: str = 'HGH'):
 
     return wrapper
 
+
 @jit
-def attraction(x:Any, R:float, Z_alpha:int, Z_beta:int, Ne: int): 
-    v_x = - Z_alpha/(jnp.sqrt(1 + (x + R/2)**2))  - Z_beta/(jnp.sqrt(1 + (x - R/2)**2))
-    return v_x*Ne 
+def attraction(x: Any, R: float, Z_alpha: int, Z_beta: int, Ne: int):
+    v_x = - Z_alpha/(jnp.sqrt(1 + (x + R/2)**2)) - \
+        Z_beta/(jnp.sqrt(1 + (x - R/2)**2))
+    return v_x*Ne
+
 
 @jit
 def harmonic_potential(params: Any, x: Any, Ne: int, k: Any = 1.) -> jax.Array:

@@ -48,6 +48,7 @@ def score(params: Any, X: Array, fun: callable) -> jax.Array:
     v_score = vmap(_score, in_axes=(None, 0))
     return v_score(params, X)
 
+
 def batches_generator_w_score(key: prng.PRNGKeyArray, batch_size: int, prior_dist: Callable):
     v_score = vmap(jax.jacrev(lambda x:
                               prior_dist.log_prob(x)))
@@ -67,7 +68,6 @@ def batches_generator_w_score(key: prng.PRNGKeyArray, batch_size: int, prior_dis
             (samples, logp_samples[:, None], score), 1)
 
         yield lax.concatenate((samples0, samples1), 0)
-
 
 
 def get_scheduler(epochs: int, sched_type: str = 'zero', lr: float = 3E-4):
@@ -108,6 +108,7 @@ def get_scheduler(epochs: int, sched_type: str = 'zero', lr: float = 3E-4):
             constant_scheduler_max = optax.constant_schedule(1E-5)
             return optax.join_schedules([constant_scheduler_min, cosine_decay_scheduler,
                                         constant_scheduler_max], boundaries=[epochs/4, 2*epochs/4])
+
 
 if __name__ == '__main__':
     import matplotlib
