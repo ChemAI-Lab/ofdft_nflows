@@ -7,6 +7,7 @@ from jax import jit, vmap, hessian, jacrev, lax
 
 from ofdft_normflows.utils import *
 
+
 Array = jax.Array
 BHOR = 1.  # 1.8897259886  # 1AA to BHOR
 
