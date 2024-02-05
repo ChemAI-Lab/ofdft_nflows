@@ -14,12 +14,11 @@ import chex
 from flax.training import checkpoints
 import optax
 from optax import ema
-from distrax import MultivariateNormalDiag, Laplace
+from distrax import MultivariateNormalDiag
 
-from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree, _exchange_correlation
+from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree,_exchange_correlation
 from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian
 from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
-#from ofdft_normflows.flax_ode import neural_ode, neural_ode_score
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
 from ofdft_normflows.utils import get_scheduler, batches_generator_w_score_mix_gaussian
 
@@ -33,6 +32,8 @@ jax.config.update("jax_enable_x64", True)
 
 BHOR = 1.8897259886  # 1AA to BHOR
 
+
+
 @ partial(jax.jit,  static_argnums=(2,))
 def compute_integral(params: Any, grid_array: Any, rho: Any, Ne: int, bs: int):
     grid_coords, grid_weights = grid_array
@@ -42,10 +43,12 @@ def compute_integral(params: Any, grid_array: Any, rho: Any, Ne: int, bs: int):
 
 def plot_dft_distribution(FIG_DIR: str):
 
-    Ne = 2
-    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
-    z = jnp.array([[1.], [1.]])
-    atoms = ['H', 'H']
+  
+    Ne = 4
+    coords = jnp.array([[0., 0., -3.0139239792/2], [0., 0., 3.0139239792/2]])
+    #Li H
+    z = jnp.array([[3.], [1.]])
+    atoms = ['Li', 'H']
     mol = {'coords': coords, 'z': z}
 
     m = DFTDistribution(atoms, coords)
@@ -90,14 +93,13 @@ class F_values:
     vnuc: chex.ArrayDevice
     hart: chex.ArrayDevice
     xc: chex.ArrayDevice
-    
-
+  
 
 def training(tw_kin: str = 'TF',
             v_pot: str = 'HGH',
             h_pot: str = 'MT',
             xc_pot: str = 'dirac',
-            Ne: int = 2,
+            Ne: int = 4,
             batch_size: int = 256,
             epochs: int = 100,
             lr: float = 1E-5,
@@ -113,10 +115,10 @@ def training(tw_kin: str = 'TF',
     CKPT_DIR_ALL = f"{CKPT_DIR}/checkpoints_all/"
 
     
-    Ne = 2
-    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
-    z = jnp.array([[1.], [1.]])
-    atoms = ['H', 'H']
+    #1.5949 A to Bohr
+    coords = jnp.array([[0., 0., -3.0139239792/2], [0., 0., 3.0139239792/2]])
+    z = jnp.array([[3.], [1.]])
+    atoms = ['Li', 'H']
     mol = {'coords': coords, 'z': z}
 
     png = jrnd.PRNGKey(0)
@@ -139,15 +141,9 @@ def training(tw_kin: str = 'TF',
     def NODE_fwd_score(params, batch): return neural_ode_score(
         params, batch, model_fwd, 0., 1., 3)
 
-    # mu = jnp.zeros((3,))
-    # cov = jnp.ones((3,))
-    mean = jnp.array([[[-2.,0.,0.]],[[2.,0.,0.]]])
     c = jnp.array([[[1.,1.,1.]],[[1.,1.,1.]]])
-
-    mean = mean[:,:,:]
-    c = c[:,:,:]
-
-    probs = jnp.array([.5,.5])
+    c = c[:,:,:]  
+    probs = jnp.array([.6,.4])
     mu = coords[:,None]
     cov = c
     
@@ -201,7 +197,7 @@ def training(tw_kin: str = 'TF',
     v_functional = _nuclear(v_pot)
     vh_functional = _hartree(h_pot)
     xc_functional = _exchange_correlation(xc_pot)
-    
+
 
     @jax.jit
     def loss(params, u_samples):
@@ -224,7 +220,8 @@ def training(tw_kin: str = 'TF',
                             kin=jnp.mean(e_t),
                             vnuc=jnp.mean(e_nuc_v),
                             hart=jnp.mean(e_h),
-                            xc=jnp.mean(e_xc))
+                            xc=jnp.mean(e_xc)
+                            )
         return energy, f_values
     
     @jax.jit
@@ -236,13 +233,14 @@ def training(tw_kin: str = 'TF',
         return params, opt_state, loss_value
 
     _, key = jrnd.split(key)
-    gen_batches = batches_generator_w_score_mix_gaussian(key, batch_size, prior_dist) 
+    gen_batches =  batches_generator_w_score_mix_gaussian(key, batch_size, prior_dist)
+   
 
     df = pd.DataFrame()
     df_ema = pd.DataFrame()
     for i in range(epochs+1):
         batch = next(gen_batches)
-        params, opt_state, loss_value = step(params, opt_state, batch)  # , ci
+        params, opt_state, loss_value = step(params, opt_state, batch) 
         loss_epoch, losses = loss_value
 
         # functionals values ema
@@ -251,8 +249,7 @@ def training(tw_kin: str = 'TF',
         ei_ema = energies_i_ema.energy
         norm_val = compute_integral(
             params, normalization_array, rho_rev, Ne, 0)
-        # print(norm_val)
-        #assert 0 
+        
         r_ = {'epoch': i,
               'E': loss_epoch,
               'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'XC': losses.xc,
@@ -332,7 +329,7 @@ def training(tw_kin: str = 'TF',
             plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.svg', transparent=True)
             plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.png')
 
-            # assert 0
+       
 
 
 def main():
@@ -376,7 +373,7 @@ def main():
     global CKPT_DIR
     global FIG_DIR
     global mol_name
-    mol_name = 'H2'
+    mol_name = 'LiH_3d'
     CKPT_DIR = f"Results/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{xc_pot.upper()}_lr_{lr:.1e}"
     if sched_type.lower() != 'c' or sched_type.lower() != 'const':
         CKPT_DIR = CKPT_DIR + f"_sched_{sched_type.upper()}"

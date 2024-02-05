@@ -16,8 +16,8 @@ def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim
         _evol_fun,
         batch,
         start_and_end_time,
-        atol=1e-5,
-        rtol=1e-5
+        atol=1e-7,
+        rtol=1e-7
     )
     z_t, logp_diff_t = outputs[:, :,
                                :d_dim], outputs[:, :, d_dim:]
@@ -51,8 +51,8 @@ def neural_ode_score(params: Any, batch: Any, f: Callable, t0: float, t1: float,
         _evol_fun,
         batch,
         start_and_end_time,
-        atol=1e-5,
-        rtol=1e-5
+        atol=1e-7,
+        rtol=1e-7
     )
     z_t, logp_diff_t, score_t = outputs[:, :,
                                         :d_dim], outputs[:, :, d_dim:d_dim+1], outputs[:, :, d_dim+1:]

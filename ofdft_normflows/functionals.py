@@ -5,7 +5,9 @@ import jax
 import jax.numpy as jnp
 from jax import jit, vmap, hessian, jacrev, lax
 
+#from utils import *
 from ofdft_normflows.utils import *
+
 
 Array = jax.Array
 BHOR = 1.  # 1.8897259886  # 1AA to BHOR
@@ -30,7 +32,10 @@ def _kinetic(name: str = 'TF'):
             return thomas_fermi(*args) + weizsacker(*args)
     elif name.lower() == 'w1d' or name.lower() == 'weizsacker1d':
         def wrapper(*args):
-            return weizsacker(*args, l=.2)
+            return weizsacker(*args)
+    elif name.lower() == 'tfw_1d' or name.lower() == 'thomas_fermi_weizsacker_1d':
+        def wrapper(*args): 
+            return thomas_fermi_1D(*args) + weizsacker(*args)
     elif name.lower() == 'k' or name.lower() == 'kinetic':
         def wrapper(*args):
             return kinetic(*args)
@@ -45,7 +50,7 @@ def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array:  # CHECK THIS ON
 
 
 @jit
-def weizsacker(den: Array, score: Array, Ne: int, l: Any = .2) -> jax.Array:
+def weizsacker(den: Array, score: Array, Ne: int) -> jax.Array:
     """    
     l = 0.2 (W Stich, EKU Gross., Physik A Atoms and Nuclei, 309(1):511, 1982.)
     T_{\text{Weizsacker}}[\rho] &=& \frac{\lambda}{8} \int \frac{(\nabla \rho)^2}{\rho} dr = 
@@ -61,6 +66,7 @@ def weizsacker(den: Array, score: Array, Ne: int, l: Any = .2) -> jax.Array:
     Returns:
         jax.Array: _description_
     """
+    l = .2
     score_sqr = jnp.einsum('ij,ij->i', score, score)
     return (l*Ne/8.)*lax.expand_dims(score_sqr, (1,))
 
@@ -108,48 +114,234 @@ def thomas_fermi_1D(den: Array, score: Array, Ne: int) -> jax.Array:
     l = (jnp.pi*jnp.pi)/24.
     return l*(Ne**3)*den_sqr
 # ------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------
+# EXCHANGE-CORRELATION FUNCTIONALS 
+# ------------------------------------------------------------------------------------------------------------
+# def _correlation(name: str = 'correlation'): 
+#     if name.lower() == 'correlation': 
+#         def wrapper(*args): 
+#             return uniform_gas(*args)
 
-
-def _exchange(name: str = 'dirac'):
-    if name.lower() == 'dirac':
+def _exchange_correlation(name: str = 'XC'): 
+    if name.lower() == 'ex_c_1d' or name.lower() == 'exchange_correlation_1d':
         def wrapper(*args):
-            return Dirac_exchange(*args)
-    elif name.lower() == 'c' or name.lower() == 'local_density_app':
+            return exchange_correlation_one_dimensional(*args)
+    if name.lower() == 'ex_c_vwn_c_e' or name.lower() == 'exchange_correlation_vwn_c_e_3d': 
         def wrapper(*args):
-            return LDA_1D(*args)
-    elif name.lower() == 'x' or name.lower() == 'local_density_gas':
+            return correlation_vwn_c_e(*args) + Dirac_exchange(*args)
+    if name.lower() == 'ex_c_pw92_c_e' or name.lower() == 'exchange_correlation_pw92_c_e_3d': 
         def wrapper(*args):
-            return LDA_1D(*args)
+            return correlation_pw92_c_e(*args) + Dirac_exchange(*args)
     return wrapper
 
 @jit 
-def Uniform_gas(den: Array, Ne: int): 
-    rs = 1/(2*Ne*den)
-    kf = (jnp.pi * rs)/2.
-    small_positive_value = 1e-10  # small positive value to avoid singularity at y = 0
-    large_number = 1000.0
-    y = jnp.linspace(small_positive_value,large_number,512)
-    fs = jnp.sin(y)**2 / (y**2 * jnp.sqrt(kf**2 + y**2))
-    vmap_result = jax.vmap(lambda z: jnp.trapz(fs, y))(kf)
-    return -rs*vmap_result
+def correlation_vwn_c_e(den: Array, Ne:int):
+
+    r"""
+    VWN correlation functional
+    See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
+    See also text after eq 8.9.6.1 in https://www.theoretical-physics.com/dev/quantum/dft.html
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    Float[Array, "grid"]
+
+    In our case the "grip spin" is equal to zero. 
+    """
+    
+    A = 0.0621814
+    b = 3.72744
+    c = 12.9352
+    x0 = -0.10498
+    clip_cte = 1e-30
+    den = jnp.where(den > clip_cte, den, 0.0)
+    log_den = jnp.log2(den)
+    log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
+    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_den / 3.0
+    log_x = log_rs / 2
+    rs = 2.**log_rs
+    x = 2.**log_x
+
+    X = 2. ** (2. * log_x) + 2. ** (log_x + jnp.log2(b)) + c
+    X0 = x0**2 + b * x0 + c
+
+    Q = jnp.sqrt(4 * c - b**2)
+
+    # check eq with https://github.com/ElectronicStructureLibrary/libxc/blob/master/maple/vwn.mpl
+    e_PF = (
+        A
+        / 2.
+        * (
+            2. * jnp.log(x)
+            - jnp.log(X)
+            + 2. * b / Q * jnp.arctan(Q / (2. * x + b))
+            - b
+            * x0
+            / X0
+            * (jnp.log((x - x0) ** 2. / X) + 2. * (2. * x0 + b) / Q * jnp.arctan(Q / (2. * x + b)))
+        )
+    ) 
+
+    e_correlation = Ne*e_PF  
+
+    return e_correlation
+
+@jit 
+def correlation_pw92_c_e(den: Array, Ne:int):
+    r"""
+    Eq 10 in
+    https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    """
+    clip_cte: float = 1e-30
+    A_ = 0.031091
+    alpha1 = 0.21370
+    beta1 = 7.5957
+    beta2 =3.5876
+    beta3 = 1.6382
+    beta4 = 0.49294
+
+    log_den = jnp.log2(jnp.clip(den.sum(axis=1, keepdims=True), a_min=clip_cte))
+    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_den / 3.0
+    brs_1_2 = 2 ** (log_rs / 2 + jnp.log2(beta1))
+    ars = 2 ** (log_rs + jnp.log2(alpha1))
+    brs = 2 ** (log_rs + jnp.log2(beta2))
+    brs_3_2 = 2 ** (3 * log_rs / 2 + jnp.log2(beta3))
+    brs2 = 2 ** (2 * log_rs + jnp.log2(beta4))
+
+    e_PF = -2 * A_ * (1 + ars) * jnp.log(1 + (1 / (2 * A_)) / (brs_1_2 + brs + brs_3_2 + brs2))
+    
+    e_correlation = Ne*e_PF 
+
+    return e_correlation
 
 @jit
-def LDA_1D(den: Array, Ne: int):
+def exchange_correlation_one_dimensional(den:Array, Ne:int): 
     rs = 1/(2*Ne*den)
-    A = 18.40 
-    B = 0.
-    C = 7.501
-    D = 0.10185
-    E = 0.012827
-    alpha = 1.511
-    beta = 0.258
-    m = 4.424
-    rs_squared = rs**2
-    rs_cubed = rs**3
-    Numerator = (rs + E*rs_squared)
-    Denominator = (A+B*rs+C*rs_squared+D*rs_cubed)
-    e_c_0 = -(1/2)*(Numerator/Denominator) * jnp.log(1 + alpha*rs + beta*rs**m)
-    return Ne*e_c_0 
+    a0 = -0.8862269
+    b0 = -2.1414101
+    c0 = 0.4721355
+    d0 = 2.81423
+    e0 = 0.529891
+    f0 = 0.458513
+    g0 = -0.202642
+    h0 = 0.470876
+    alpha0 = 0.104435
+    beta0 = 4.11613
+    n1 = a0 + b0*rs + c0*rs**2 
+    d1 = 1 + d0*rs + e0*rs**2 + f0*rs**3 
+    f1 = n1/d1 
+    n2 = g0*rs*jnp.log(rs + alpha0*rs**beta0)
+    d2 = 1 + h0*rs**2 
+    f2 = n2/d2 
+    return Ne*(f1 + f2)
+
+@jit
+def pw92_c_e(den: Array, Ne: int):
+    r"""
+    Eq 10 in
+    https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    """
+    clip_cte: float = 1e-30
+    A_ = 0.031091
+    alpha1 = 0.21370
+    beta1 = 7.5957
+    beta2 =3.5876
+    beta3 = 1.6382
+    beta4 = 0.49294
+
+    log_den = jnp.log2(jnp.clip(den.sum(axis=1, keepdims=True), a_min=clip_cte))
+    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_den / 3.0
+    brs_1_2 = 2 ** (log_rs / 2 + jnp.log2(beta1))
+    ars = 2 ** (log_rs + jnp.log2(alpha1))
+    brs = 2 ** (log_rs + jnp.log2(beta2))
+    brs_3_2 = 2 ** (3 * log_rs / 2 + jnp.log2(beta3))
+    brs2 = 2 ** (2 * log_rs + jnp.log2(beta4))
+
+    e_PF = -2 * A_ * (1 + ars) * jnp.log(1 + (1 / (2 * A_)) / (brs_1_2 + brs + brs_3_2 + brs2))
+
+    return e_PF * Ne
+
+@jit
+def vwn_c_e(den: Array, Ne:int) :
+    r"""
+    VWN correlation functional
+    See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
+    See also text after eq 8.9.6.1 in https://www.theoretical-physics.com/dev/quantum/dft.html
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    Float[Array, "grid"]
+    """
+    A = 0.0621814
+    b = 3.72744
+    c = 12.9352
+    x0 = -0.10498
+    # A = jnp.array([[0.0621814, 0.0621814 / 2.]])
+    # b = jnp.array([[3.72744, 7.06042]])
+    # c = jnp.array([[12.9352, 18.0578]])
+    # x0 = jnp.array([[-0.10498, -0.325]])
+    clip_cte = 1e-30
+    den = jnp.where(den > clip_cte, den, 0.0)
+    log_den = jnp.log2(den)
+    log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
+    # assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
+    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_den / 3.0
+    log_x = log_rs / 2
+    rs = 2.**log_rs
+    x = 2.**log_x
+
+    X = 2. ** (2. * log_x) + 2. ** (log_x + jnp.log2(b)) + c
+    X0 = x0**2 + b * x0 + c
+    # assert not jnp.isnan(X).any() and not jnp.isinf(X0).any()
+
+    Q = jnp.sqrt(4 * c - b**2)
+
+    # check eq with https://github.com/ElectronicStructureLibrary/libxc/blob/master/maple/vwn.mpl
+    e_PF = (
+        A
+        / 2.
+        * (
+            2. * jnp.log(x)
+            - jnp.log(X)
+            + 2. * b / Q * jnp.arctan(Q / (2. * x + b))
+            - b
+            * x0
+            / X0
+            * (jnp.log((x - x0) ** 2. / X) + 2. * (2. * x0 + b) / Q * jnp.arctan(Q / (2. * x + b)))
+        )
+    )
+    
+    return e_PF * Ne
 
 @jit
 def Dirac_exchange(den: Array, Ne: int) -> jax.Array:
@@ -172,16 +364,16 @@ def Dirac_exchange(den: Array, Ne: int) -> jax.Array:
 # ------------------------------------------------------------------------------------------------------------
 
 
-def _hartree(name: str = 'mt'):
-    if name.lower() == 'mt':
+def _hartree(name: str = 'HP'):
+    if name.lower() == 'hartree_potential' or name.lower() == 'hartree':
         def wrapper(*args):
-            return Hartree_potential_MT(*args)
+            return Hartree_potential(*args)
     elif name.lower() == 'soft_coulomb' or name.lower() == 'softc':
         def wrapper(*args): 
             return soft_coulomb(*args)
-    else:  # full
+    elif name.lower() == 'hartree_MT' or name.lower() == 'hartree_mt':
         def wrapper(*args):
-            return Hartree_potential(*args)
+            return Hartree_potential_MT(*args)
 
     return wrapper
 
@@ -190,7 +382,6 @@ def _hartree(name: str = 'mt'):
 def soft_coulomb(x:Any,xp:Any,Ne: int):
     v_coul = 1/(jnp.sqrt( 1 + (x-xp)*(x-xp)))
     return v_coul*Ne**2
-
 
 @jit
 def Hartree_potential(x: Any, xp: Any, Ne: int, eps=1E-5):
@@ -214,10 +405,10 @@ def Hartree_potential_MT(x: Any, xp: Any, Ne: int, alpha=0.5):
 # ------------------------------------------------------------------------------------------------------------
 
 
-def _nuclear(name: str = 'HGH'):
-    if name.lower() == 'hgh':
+def _nuclear(name: str = 'NP'):
+    if name.lower() == 'nuclei_potential' or name.lower() == 'nuclei':
         def wrapper(*args):
-            return Nuclei_potential_HGH(*args)
+            return Nuclei_potential(*args)
     elif name.lower() == 'madness' or name.lower() == 'mdns':
         def wrapper(*args):
             return Nuclei_potential_smooth(*args)
@@ -227,9 +418,9 @@ def _nuclear(name: str = 'HGH'):
     elif name.lower() == 'attraction' or name.lower() == 'attr':
         def wrapper(*args):
             return attraction(*args)
-    else:
+    elif name.lower() == 'hgh' or name.lower() == 'nuclei_potential_hgh':
         def wrapper(*args):
-            return Nuclei_potential(*args)
+            return Nuclei_potential_HGH(*args)
 
     return wrapper
 
@@ -373,7 +564,7 @@ if __name__ == '__main__':
     xp = jax.random.uniform(key, shape=(10, 3))
     def model_identity(params, x): return x
     y = Nuclei_potential(None, x, model_identity, mol)
-    # print(y.shape)
+
     import matplotlib
     import matplotlib.pyplot as plt
     xt = jnp.linspace(-1.5, 1.5, 500)

@@ -23,7 +23,9 @@ def safe_sqrt_jvp(primals, tangents):
   tangent_out = 0.5 * x_dot / jnp.where(x > 0, primal_out, jnp.inf)
   return primal_out, tangent_out
   # https://github.com/cagrikymk/JAX-ReaxFF/blob/master/jaxreaxff/forcefield.py
-  
+
+# print(safe_sqrt_jvp([5],[5]))
+# assert 0 
 @nn.jit
 class ODEfun(nn.Module):
     in_out_dims: Any

@@ -16,11 +16,11 @@ import optax
 from optax import ema
 from distrax import MultivariateNormalDiag, Laplace
 
-from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree, _exchange, cusp_condition
-from ofdft_normflows.dft_distrax import DFTDistribution
-from ofdft_normflows.flax_ode import neural_ode, neural_ode_score
+from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree,_exchange_correlation
+from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian
+from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
-from ofdft_normflows.utils import get_scheduler, batches_generator_w_score
+from ofdft_normflows.utils import get_scheduler,batches_generator_w_score_mix_gaussian
 
 import matplotlib.pyplot as plt
 
@@ -28,11 +28,8 @@ Array = Any
 KeyArray = Union[Array, prng.PRNGKeyArray]
 
 jax.config.update("jax_enable_x64", True)
-# jax.config.update('jax_disable_jit', True)
 
 BHOR = 1.8897259886  # 1AA to BHOR
-# CKPT_DIR = "Results/GP_pot"
-# FIG_DIR = "Figures/GP_pot"
 
 
 @ partial(jax.jit,  static_argnums=(2,))
@@ -48,24 +45,23 @@ class F_values:
     kin: chex.ArrayDevice
     vnuc: chex.ArrayDevice
     hart: chex.ArrayDevice
-    x: chex.ArrayDevice
+    xc: chex.ArrayDevice
+    
 
-
-def training(t_kin: str = 'TF',
-             v_pot: str = 'HGH',
-             h_pot: str = 'MT',
-             x_pot: str = 'Dirac',
-             batch_size: int = 256,
-             epochs: int = 100,
-             lr: float = 1E-5,
-             nn_arch: tuple = (512, 512,),
-             bool_load_params: bool = False,
-             scheduler_type: str = 'ones'):
+def training(tw_kin: str = 'TF',
+            v_pot: str = 'HGH',
+            h_pot: str = 'MT',
+            xc_pot: str = 'dirac',
+            Ne: int = 10,
+            batch_size: int = 256,
+            epochs: int = 100,
+            lr: float = 1E-5,
+            nn_arch: tuple = (512, 512,),
+            bool_load_params: bool = False,
+            scheduler_type: str = 'ones'):
 
     CKPT_DIR_ALL = f"{CKPT_DIR}/checkpoints_all/"
-
-    mol_name = 'H2O'
-    Ne = 10
+    
     # O	0.0000000	0.0000000	0.1189120
     # H	0.0000000	0.7612710	-0.4756480
     # H	0.0000000	-0.7612710	-0.4756480
@@ -96,11 +92,19 @@ def training(t_kin: str = 'TF',
     def NODE_fwd_score(params, batch): return neural_ode_score(
         params, batch, model_fwd, 0., 1., 3)
 
-    mean = jnp.zeros((3,))
-    cov = jnp.ones((3,))
-    prior_dist = MultivariateNormalDiag(mean, cov,)
+    mean = jnp.array([[[-2.,0.,0.]],[[2.,0.,0.]],[[2.,0.,0.]]])
+    c = jnp.array([[[1.,1.,1.]],[[1.,1.,1.]],[[1.,1.,1.]]])
 
-    m = DFTDistribution(atoms=atoms, geometry=coords, geom_units='B')
+    mean = mean[:,:,:]
+    c = c[:,:,:]
+
+    probs = jnp.array([.8,.1,.1])
+    mu = coords[:,None]
+    cov = c
+    
+    prior_dist = MixGaussian(mu,cov,probs)
+
+    m = DFTDistribution(atoms=atoms, geometry=coords)
     normalization_array = (m.coords, m.weights)
 
     # optimizer = optax.adam(learning_rate=1E-3)
@@ -113,7 +117,7 @@ def training(t_kin: str = 'TF',
     opt_state = optimizer.init(params)
     energies_ema = ema(decay=0.99)
     energies_state = energies_ema.init(
-        F_values(energy=jnp.array(0.), kin=jnp.array(0.), vnuc=jnp.array(0.), hart=jnp.array(0.), x=jnp.array(0.)))
+       F_values(energy=jnp.array(0.), kin=jnp.array(0.), vnuc=jnp.array(0.), hart=jnp.array(0.), xc=jnp.array(0.)))
 
     # load prev parameters
     if bool_load_params:
@@ -135,7 +139,7 @@ def training(t_kin: str = 'TF',
     def rho_rev(params, x):
         zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
         z0, logp_z0 = NODE_rev(params, zt)
-        logp_x = prior_dist.log_prob(z0)[:, None] - logp_z0
+        logp_x = prior_dist.log_prob(z0) - logp_z0
         return jnp.exp(logp_x)  # logp_x
 
     @jax.jit
@@ -143,10 +147,10 @@ def training(t_kin: str = 'TF',
         zt, _ = NODE_fwd(params, samples)
         return zt
 
-    t_functional = _kinetic(t_kin)
+    t_functional = _kinetic(tw_kin)
     v_functional = _nuclear(v_pot)
     vh_functional = _hartree(h_pot)
-    x_functional = _exchange(x_pot)
+    xc_functional = _exchange_correlation(xc_pot)
 
     @jax.jit
     def loss(params, u_samples):
@@ -160,15 +164,17 @@ def training(t_kin: str = 'TF',
         e_t = t_functional(den, score, Ne)
         e_h = vh_functional(x, xp, Ne)
         e_nuc_v = v_functional(x, Ne, mol)
-        e_x = x_functional(den, Ne)
+        e_xc = xc_functional(den, Ne)
+       
 
-        e = e_t + e_nuc_v + e_h + e_x
+        e = e_t + e_nuc_v + e_h + e_xc 
         energy = jnp.mean(e)
         f_values = F_values(energy=energy,
                             kin=jnp.mean(e_t),
                             vnuc=jnp.mean(e_nuc_v),
                             hart=jnp.mean(e_h),
-                            x=jnp.mean(e_x))
+                            xc=jnp.mean(e_xc))
+        
         return energy, f_values
 
     @jax.jit
@@ -180,7 +186,7 @@ def training(t_kin: str = 'TF',
         return params, opt_state, loss_value
 
     _, key = jrnd.split(key)
-    gen_batches = batches_generator_w_score(key, batch_size, prior_dist)
+    gen_batches = batches_generator_w_score_mix_gaussian(key, batch_size, prior_dist)
 
     df = pd.DataFrame()
     df_ema = pd.DataFrame()
@@ -198,7 +204,7 @@ def training(t_kin: str = 'TF',
 
         r_ = {'epoch': i,
               'E': loss_epoch,
-              'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'X': losses.x,
+              'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'XC': losses.xc,
               'I': norm_val,
               }
 
@@ -208,7 +214,7 @@ def training(t_kin: str = 'TF',
 
         r_ema = {'epoch': i,
                  'E': energies_i_ema.energy,
-                 'T': energies_i_ema.kin, 'V': energies_i_ema.vnuc, 'H': energies_i_ema.hart, 'X': energies_i_ema.x,
+                 'T': energies_i_ema.kin, 'V': energies_i_ema.vnuc, 'H': energies_i_ema.hart, 'XC': energies_i_ema.xc,
                  'I': norm_val,
                  }
         df_ema = pd.concat(
@@ -223,28 +229,29 @@ def training(t_kin: str = 'TF',
 
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
-    parser.add_argument("--epochs", type=int,
-                        default=1000, help="training epochs")
-    parser.add_argument("--bs", type=int, default=512, help="batch size")
+    parser.add_argument("--epochs", type=int,default=1000, 
+                        help="training epochs")
+    parser.add_argument("--bs", type=int, default=512,
+                         help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
     parser.add_argument("--lr", type=float, default=3E-4,
                         help="learning rate")
     parser.add_argument("--kin", type=str, default='tf-w',
                         help="Kinetic energy funcitonal")
-    parser.add_argument("--nuc", type=str, default='V',
+    parser.add_argument("--nuc", type=str, default='nuclei_potential',
                         help="Nuclear Potential energy funcitonal")
-    parser.add_argument("--hart", type=str, default='H',
+    parser.add_argument("--hart", type=str, default='hartree',
                         help="Hartree energy funcitonal")
-    parser.add_argument("--x", type=str, default='X',
+    parser.add_argument("--xc", type=str, default='ex_c_vwn_c_e',
                         help="Exchange energy funcitonal")
-    # parser.add_argument("--N", type=int, default=1, help="number of particles")
-    parser.add_argument("--sched", type=str, default='const',
+    parser.add_argument("--N", type=int, default=10, 
+                        help="number of particles")
+    parser.add_argument("--sched", type=str, default='mix',
                         help="Hartree integral scheduler")
-    # parser.add_argument("--sched", type=str, default='one',
-    #                     help="Hartree integral scheduler")
     args = parser.parse_args()
 
+    Ne = args.N
     batch_size = args.bs
     epochs = args.epochs
     bool_params = args.params
@@ -254,14 +261,15 @@ def main():
     kin = args.kin
     v_pot = args.nuc
     h_pot = args.hart
-    x_pot = args.x
+    xc_pot = args.xc
     nn = (512, 512, 512,)
-    # Ne = args.N
-    # scheduler_type = args.sched
+  
 
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/H2O_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_lr_{lr:.1e}"
+    global mol_name
+    mol_name = 'H2O'
+    CKPT_DIR = f"Results/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{xc_pot.upper()}_lr_{lr:.1e}"
     if sched_type.lower() != 'c' or sched_type.lower() != 'const':
         CKPT_DIR = CKPT_DIR + f"_sched_{sched_type.upper()}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
@@ -274,21 +282,22 @@ def main():
     if not os.path.exists(fwd):
         os.makedirs(fwd)
 
-    job_params = {'epohs': epochs,
-                  'batch_size': batch_size,
-                  'lr': lr,
-                  'kin': kin,
-                  'v_nuc': v_pot,
-                  'h_pot': h_pot,
-                  'x_pot': x_pot,
-                  'nn': tuple(nn),
-                  'sched': sched_type,
+    job_params ={'Ne':Ne,
+                'epochs': epochs,
+                'batch_size': batch_size,
+                'lr': lr,
+                'kin': kin,
+                'v_nuc': v_pot,
+                'h_pot': h_pot,
+                'xc_pot': xc_pot,
+                'nn': tuple(nn),
+                'sched': sched_type,
                   }
     with open(f"{CKPT_DIR}/job_params.json", "w") as outfile:
         json.dump(job_params, outfile, indent=4)
 
-    # assert 0
-    training(kin, v_pot, h_pot, x_pot, batch_size,
+
+    training(kin, v_pot, h_pot, xc_pot,Ne, batch_size,
              epochs, lr, nn, bool_params, sched_type)
 
 
