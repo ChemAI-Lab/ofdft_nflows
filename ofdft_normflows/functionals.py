@@ -122,16 +122,25 @@ def thomas_fermi_1D(den: Array, score: Array, Ne: int) -> jax.Array:
 #         def wrapper(*args): 
 #             return uniform_gas(*args)
 
-def _exchange_correlation(name: str = 'XC'): 
-    if name.lower() == 'ex_c_1d' or name.lower() == 'exchange_correlation_1d':
+def _exchange_correlation(name: str = 'XC'):
+    if name.lower() == 'dirac' or name.lower() == 'dirac_exchange':
+        def wrapper(*args):
+            return Dirac_exchange(*args) 
+    if name.lower() == 'xc_1d' or name.lower() == 'exchange_correlation_1d':
         def wrapper(*args):
             return exchange_correlation_one_dimensional(*args)
-    if name.lower() == 'ex_c_vwn_c_e' or name.lower() == 'exchange_correlation_vwn_c_e_3d': 
+    if name.lower() == 'vwn_c_e' or name.lower() == 'correlation_vwn_c_e': 
         def wrapper(*args):
-            return correlation_vwn_c_e(*args) + Dirac_exchange(*args)
-    if name.lower() == 'ex_c_pw92_c_e' or name.lower() == 'exchange_correlation_pw92_c_e_3d': 
+            return correlation_vwn_c_e(*args) 
+    if name.lower() == 'pw92_c_e' or name.lower() == 'correlation_pw92_c_e': 
         def wrapper(*args):
-            return correlation_pw92_c_e(*args) + Dirac_exchange(*args)
+            return correlation_pw92_c_e(*args) 
+    if name.lower() == 'b88_x_e': 
+        def wrapper(*args):
+            return b88_x_e(*args)
+    if name.lower() == 'dirac_b88_x_e': 
+        def wrapper(*args): 
+            return Dirac_exchange(*args) + b88_x_e(*args)
     return wrapper
 
 @jit 
@@ -343,8 +352,62 @@ def vwn_c_e(den: Array, Ne:int) :
     
     return e_PF * Ne
 
+@jit 
+def b88_x_e(den: Array, score: Array,Ne: int):
+    r"""
+    B88 exchange functional
+    See eq 8 in https://journals.aps.org/pra/abstract/10.1103/PhysRevA.38.3098
+    See also https://github.com/ElectronicStructureLibrary/libxc/blob/4bd0e1e36347c6d0a4e378a2c8d891ae43f8c951/maple/gga_exc/gga_x_b88.mpl#L22
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    grad_rho : Float[Array, "grid spin dimension"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    Float[Array, "grid"]
+    """
+    clip_cte =  1e-30
+    beta = 0.0042
+
+    den = jnp.clip(den, a_min=clip_cte)
+
+    # LDA preprocessing data: Note that we duplicate the density to sum and divide in the last eq.
+    log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
+
+    grad_den_norm_sq = jnp.sum(score**2)
+
+    log_grad_den_norm = jnp.log2(jnp.clip(grad_den_norm_sq, a_min=clip_cte)) / 2
+
+    # GGA preprocessing data
+    log_x_sigma = log_grad_den_norm - 4 / 3.0 * log_den
+
+    # assert not jnp.isnan(log_x_sigma).any() and not jnp.isinf(log_x_sigma).any()
+
+    x_sigma = 2**log_x_sigma
+
+    # Eq 2.78 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    b88_e = -(
+        beta
+        * 2
+        ** (
+            4 * log_den / 3
+            + 2 * log_x_sigma
+            - jnp.log2(1 + 6 * beta * x_sigma * jnp.arcsinh(x_sigma))
+        )
+    )
+
+    # def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    # b88_e = b88_es[0] + (b88_es[1]-b88_es[0])*fzeta(zeta)
+
+    return b88_e*(Ne**(4/3))*den**(1/3)
+
 @jit
-def Dirac_exchange(den: Array, Ne: int) -> jax.Array:
+def Dirac_exchange(den: Array,score: Array, Ne: int) -> jax.Array:
     """
     ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\int  \rho^{4/3} dr \\
     ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\mathbb{E}_{\rho} \left[ \rho^{1/3} \right]

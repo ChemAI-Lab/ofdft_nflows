@@ -96,7 +96,8 @@ class F_values:
 def training(tw_kin: str = 'TF',
             v_pot: str = 'HGH',
             h_pot: str = 'MT',
-            xc_pot: str = 'dirac',
+            x_pot: str = 'dirac',
+            c_pot: str = 'vwn_c_e', 
             Ne: int = 2,
             batch_size: int = 256,
             epochs: int = 100,
@@ -106,7 +107,7 @@ def training(tw_kin: str = 'TF',
             scheduler_type: str = 'ones'):
     global CKPT_DIR
     global FIG_DIR
-    CKPT_DIR = f"Results/{mol_name}_{tw_kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{xc_pot.upper()}_lr_{lr:.1e}"
+    CKPT_DIR = f"Results/{mol_name}_{tw_kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_{c_pot.upper()}_lr_{lr:.1e}"
     if scheduler_type.lower() != 'c' or scheduler_type.lower() != 'const':
         CKPT_DIR = CKPT_DIR + f"_sched_{scheduler_type.upper()}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
@@ -200,8 +201,8 @@ def training(tw_kin: str = 'TF',
     t_functional = _kinetic(tw_kin)
     v_functional = _nuclear(v_pot)
     vh_functional = _hartree(h_pot)
-    xc_functional = _exchange_correlation(xc_pot)
-    
+    x_functional = _exchange_correlation(x_pot)
+    c_functional = _exchange_correlation(c_pot)
 
     @jax.jit
     def loss(params, u_samples):
@@ -215,16 +216,17 @@ def training(tw_kin: str = 'TF',
         e_t = t_functional(den, score, Ne)
         e_h = vh_functional(x, xp, Ne)
         e_nuc_v = v_functional(x, Ne, mol)
-        e_xc = xc_functional(den,Ne)
+        e_x = x_functional(den,score,Ne)
+        e_c = c_functional(den,Ne)
       
 
-        e = e_t + e_nuc_v + e_h + e_xc
+        e = e_t + e_nuc_v + e_h + e_x + e_c
         energy = jnp.mean(e)
         f_values = F_values(energy=energy,
                             kin=jnp.mean(e_t),
                             vnuc=jnp.mean(e_nuc_v),
                             hart=jnp.mean(e_h),
-                            xc=jnp.mean(e_xc))
+                            xc=jnp.mean(e_x + e_c))
         return energy, f_values
     
     @jax.jit
@@ -351,8 +353,10 @@ def main():
                         help="Nuclear Potential energy funcitonal")
     parser.add_argument("--hart", type=str, default='hartree',
                         help="Hartree energy funcitonal")
-    parser.add_argument("--xc", type=str, default='ex_c_vwn_c_e',
+    parser.add_argument("--x", type=str, default='dirac_b88_x_e',
                         help="Exchange energy funcitonal")
+    parser.add_argument("--c", type=str, default='vwn_c_e',
+                        help="Correlation energy funcitonal")
     parser.add_argument("--N", type=int, default=4, 
                         help="number of particles")
     parser.add_argument("--sched", type=str, default='mix',
@@ -369,7 +373,8 @@ def main():
     kin = args.kin
     v_pot = args.nuc
     h_pot = args.hart
-    xc_pot = args.xc
+    x_pot = args.x
+    c_pot = args.c
     nn = (512, 512, 512,)
   
 
@@ -377,7 +382,7 @@ def main():
     global FIG_DIR
     global mol_name
     mol_name = 'H2'
-    CKPT_DIR = f"Results/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{xc_pot.upper()}_lr_{lr:.1e}"
+    CKPT_DIR = f"Results/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_{c_pot.upper()}_lr_{lr:.1e}"
     if sched_type.lower() != 'c' or sched_type.lower() != 'const':
         CKPT_DIR = CKPT_DIR + f"_sched_{sched_type.upper()}"
     FIG_DIR = f"{CKPT_DIR}/Figures"
@@ -397,7 +402,8 @@ def main():
                 'kin': kin,
                 'v_nuc': v_pot,
                 'h_pot': h_pot,
-                'xc_pot': xc_pot,
+                'x_pot': x_pot,
+                'c_pot': c_pot,
                 'nn': tuple(nn),
                 'sched': sched_type,
                   }
@@ -405,7 +411,7 @@ def main():
         json.dump(job_params, outfile, indent=4)
 
 
-    training(kin, v_pot, h_pot, xc_pot,Ne, batch_size,
+    training(kin, v_pot, h_pot, x_pot,c_pot,Ne, batch_size,
              epochs, lr, nn, bool_params, sched_type)
 
 

@@ -213,11 +213,11 @@ def main():
                         help="Nuclear Potential energy funcitonal")
     parser.add_argument("--hart", type=str, default='softc',
                         help="Hartree energy funcitonal")
-    parser.add_argument("--xc", type=str, default='ex_c_1d',help="Exchange energy funcitonal")
+    parser.add_argument("--xc", type=str, default='xc_1d',help="Exchange energy funcitonal")
     parser.add_argument("--N", type=int, default=2, help="number of particles")
     parser.add_argument("--sched", type=str, default='mix',
                         help="Hartree integral scheduler")
-    parser.add_argument("--R", type=float, default=10., help="R parameter")
+    parser.add_argument("--R", type=float, default=0.7, help="R parameter")
     parser.add_argument("--Z_alpha", type=int, default=3,help="Nuclei of charges")
     parser.add_argument("--Z_beta", type=int, default=1,help="Nucleis of charges")
     args = parser.parse_args()
