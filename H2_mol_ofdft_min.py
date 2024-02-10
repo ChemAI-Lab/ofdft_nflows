@@ -114,7 +114,6 @@ def training(tw_kin: str = 'TF',
     CKPT_DIR_ALL = f"{CKPT_DIR}/checkpoints_all/"
 
     
-    Ne = 2
     coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
     z = jnp.array([[1.], [1.]])
     atoms = ['H', 'H']
@@ -357,7 +356,7 @@ def main():
                         help="Exchange energy funcitonal")
     parser.add_argument("--c", type=str, default='vwn_c_e',
                         help="Correlation energy funcitonal")
-    parser.add_argument("--N", type=int, default=4, 
+    parser.add_argument("--N", type=int, default=2, 
                         help="number of particles")
     parser.add_argument("--sched", type=str, default='mix',
                         help="Hartree integral scheduler")

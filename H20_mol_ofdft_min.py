@@ -166,7 +166,7 @@ def training(tw_kin: str = 'TF',
         e_t = t_functional(den, score, Ne)
         e_h = vh_functional(x, xp, Ne)
         e_nuc_v = v_functional(x, Ne, mol)
-        e_x = x_functional(den, Ne)
+        e_x = x_functional(den,score,Ne)
         e_c = c_functional(den,Ne)
        
 
@@ -246,7 +246,7 @@ def main():
                         help="Nuclear Potential energy funcitonal")
     parser.add_argument("--hart", type=str, default='hartree',
                         help="Hartree energy funcitonal")
-    parser.add_argument("--x", type=str, default='dirac',
+    parser.add_argument("--x", type=str, default='dirac_b88_x_e',
                         help="Exchange energy funcitonal")
     parser.add_argument("--c", type=str, default='vwn_c_e',
                         help="Correlation energy funcitonal")

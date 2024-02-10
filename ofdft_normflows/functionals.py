@@ -50,7 +50,7 @@ def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array:  # CHECK THIS ON
 
 
 @jit
-def weizsacker(den: Array, score: Array, Ne: int) -> jax.Array:
+def weizsacker(den: Array, score: Array, Ne: int) -> jax.Array: # type: ignore
     """    
     l = 0.2 (W Stich, EKU Gross., Physik A Atoms and Nuclei, 309(1):511, 1982.)
     T_{\text{Weizsacker}}[\rho] &=& \frac{\lambda}{8} \int \frac{(\nabla \rho)^2}{\rho} dr = 
@@ -375,36 +375,38 @@ def b88_x_e(den: Array, score: Array,Ne: int):
 
     den = jnp.clip(den, a_min=clip_cte)
 
-    # LDA preprocessing data: Note that we duplicate the density to sum and divide in the last eq.
-    log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
+    # # # LDA preprocessing data: Note that we duplicate the density to sum and divide in the last eq.
+    # log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
 
-    grad_den_norm_sq = jnp.sum(score**2)
+    # grad_den_norm_sq = jnp.sum(score**2)
 
-    log_grad_den_norm = jnp.log2(jnp.clip(grad_den_norm_sq, a_min=clip_cte)) / 2
+    # log_grad_den_norm = jnp.log2(jnp.clip(grad_den_norm_sq, a_min=clip_cte)) / 2
 
-    # GGA preprocessing data
-    log_x_sigma = log_grad_den_norm - 4 / 3.0 * log_den
+    # # # GGA preprocessing data
+    # log_x_sigma = log_grad_den_norm - 4 / 3.0 * log_den
 
-    # assert not jnp.isnan(log_x_sigma).any() and not jnp.isinf(log_x_sigma).any()
+    # # # assert not jnp.isnan(log_x_sigma).any() and not jnp.isinf(log_x_sigma).any()
 
-    x_sigma = 2**log_x_sigma
+    # x_sigma = 2**log_x_sigma
 
-    # Eq 2.78 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    b88_e = -(
-        beta
-        * 2
-        ** (
-            4 * log_den / 3
-            + 2 * log_x_sigma
-            - jnp.log2(1 + 6 * beta * x_sigma * jnp.arcsinh(x_sigma))
-        )
-    )
+    # # Eq 2.78 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    # b88_e = -(
+    #     beta
+    #     * 2
+    #     ** (
+    #         4 * log_den / 3
+    #         + 2 * log_x_sigma
+    #         - jnp.log2(1 + 6 * beta * x_sigma * jnp.arcsinh(x_sigma))
+    #     )
+    # )
+    X = jnp.sqrt((score * den)**2)/((Ne*den)**(4/3))
+    b88_e = -beta*((X*X)/(1+6*beta*X*jnp.arcsinh(X)))
 
     # def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
     # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
     # b88_e = b88_es[0] + (b88_es[1]-b88_es[0])*fzeta(zeta)
 
-    return b88_e*(Ne**(4/3))*den**(1/3)
+    return b88_e*Ne**(4/3)
 
 @jit
 def Dirac_exchange(den: Array,score: Array, Ne: int) -> jax.Array:
