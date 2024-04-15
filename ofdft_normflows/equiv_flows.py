@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jax import jit, lax, vmap, jacrev, random
 from jax.experimental.ode import odeint
 
-import flax
+
 import flax
 from flax import linen as nn
 
@@ -44,9 +44,9 @@ class NN(nn.Module):
     def setup(self):
         self.layers = [nn.Dense(feat)
                        for feat in self.features]  # [1:]
-        self.last_layer = nn.Dense(1,)
-        #  kernel_init=jax.nn.initializers.zeros,
-        # bias_init=jax.nn.initializers.zeros)
+        self.last_layer = nn.Dense(1,
+        kernel_init=jax.nn.initializers.zeros,
+        bias_init=jax.nn.initializers.zeros)
         # self.nuclei = self.xyz_nuclei[:,None]
 
     @nn.compact

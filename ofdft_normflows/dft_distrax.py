@@ -58,14 +58,16 @@ class MixGaussian(distrax.Distribution):
 
   def event_shape(self):
       pass
-
+      #6-31G(d,p)
   @jax.jit
   def score(self,values):
     return jax.vmap(jax.grad(lambda x:
                               self.log_prob(x).sum()))(values)
+  
+  
 class DFTDistribution(distrax.Distribution):
 
-    def __init__(self, atoms: Any, geometry: Any, basis_set: str = 'sto-3g', exc: str = 'b3lyp', dtype_: Dtype = jnp.float32):
+    def __init__(self, atoms: Any, geometry: Any, basis_set: str = '6-31G(d,p)', exc: str = 'b3lyp', dtype_: Dtype = jnp.float32):
 
         self.atoms = atoms
         self.geometry = geometry
@@ -73,14 +75,17 @@ class DFTDistribution(distrax.Distribution):
         self.exc = exc
         self.dtype_ = dtype_
 
-        self._grid_level = 2  # change this for larger molecules
+        self._grid_level = 2 # change this for larger molecules
         self.mol = self._mol()
+        self.grids = dft.gen_grid.Grids(self.mol)
+        self.grids.level = self._grid_level
+        self.grids.build()
         self.Ne = self.mol.tot_electrons()
         self.dft, self.rdm1 = self._dft()
 
-        self.coords = jnp.array(self.dft.grids.coords)
-        self.weights = jnp.array(self.dft.grids.weights)
-
+        self.coords = jnp.array(self.grids.coords)
+        self.weights = jnp.array(self.grids.weights)
+    
     def get_molecule(self):
         m_ = ""
         for a, xi in zip(self.atoms, self.geometry):
@@ -98,16 +103,32 @@ class DFTDistribution(distrax.Distribution):
         mol = gto.M(atom=atoms, basis=self.basis_set,
                     unit='B')  # , symmetry = True)
         return mol
-
+    
     def _dft(self):
+       
         mf_hf = dft.RKS(self.mol)
-        mf_hf.xc = self.exc  # default
-        mf_hf = mf_hf.newton()
+        # mf_hf.xc = 'lda,vwn' # default
+        LDA_X = 1.
+        B88_X = 1.
+        VWN_C = 1.
+
+        mf_hf.xc = f'{LDA_X:} * LDA + {B88_X:} * B88, {VWN_C:} * VWN'
+
+        mf_hf = mf_hf.newton() # second-order algortihm
         mf_hf.kernel()
-        mf_hf.grids.level = self._grid_level
-        mf_hf.grids.build(with_non0tab=True)
         dm = mf_hf.make_rdm1()
         return mf_hf, dm
+    
+
+    # def _dft(self):
+    #     mf_hf = dft.RKS(self.mol)
+    #     mf_hf.xc = self.exc  # default
+    #     mf_hf = mf_hf.newton()
+    #     mf_hf.kernel()
+    #     mf_hf.grids.level = self._grid_level
+    #     mf_hf.grids.build(with_non0tab=True)
+    #     dm = mf_hf.make_rdm1()
+    #     return mf_hf, dm
 
     @partial(jax.custom_vjp, nondiff_argnums=(0,))
     def prob(self, value):
@@ -157,8 +178,7 @@ if __name__ == '__main__':
     x = jnp.ones((10, 3))
     # print(m.prob(m,geom))
     rho = m.prob(m, x)
-    print(rho)
-
+    
     xx = jax.jacrev(m.prob, argnums=(1,))(m, x)
 
     print(xx[0].shape)
