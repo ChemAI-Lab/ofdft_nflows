@@ -6,7 +6,7 @@ from typing import Any, Union
 import pandas as pd
 
 import jax
-from jax import lax, vmap, numpy as jnp
+from jax import lax, numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
@@ -14,7 +14,7 @@ import chex
 from flax.training import checkpoints
 import optax
 from optax import ema
-from distrax import MultivariateNormalDiag
+
 
 from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree,_exchange_correlation
 from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian

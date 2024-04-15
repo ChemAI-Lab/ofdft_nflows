@@ -44,7 +44,7 @@ def _kinetic(name: str = 'TF'):
 
 # @ partial(jit,  static_argnums=(3,))
 @jit
-def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array:  # CHECK THIS ONE
+def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array: 
     rho_val = 1./(den+1E-4)**0.5  # for numerical stability
     return -0.5*jnp.multiply(rho_val, lap_sqrt_den)
 
@@ -145,8 +145,7 @@ def _exchange_correlation(name: str = 'XC'):
 
 @jit 
 def correlation_vwn_c_e(den: Array, Ne:int):
-
-    r"""
+    """
     VWN correlation functional
     See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
     See also text after eq 8.9.6.1 in https://www.theoretical-physics.com/dev/quantum/dft.html
@@ -203,7 +202,7 @@ def correlation_vwn_c_e(den: Array, Ne:int):
 
 @jit 
 def correlation_pw92_c_e(den: Array, Ne:int):
-    r"""
+    """
     Eq 10 in
     https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
 
@@ -261,7 +260,7 @@ def exchange_correlation_one_dimensional(den:Array, Ne:int):
 
 @jit
 def pw92_c_e(den: Array, Ne: int):
-    r"""
+    """
     Eq 10 in
     https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
 
@@ -296,7 +295,7 @@ def pw92_c_e(den: Array, Ne: int):
 
 @jit
 def vwn_c_e(den: Array, Ne:int) :
-    r"""
+    """
     VWN correlation functional
     See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
     See also text after eq 8.9.6.1 in https://www.theoretical-physics.com/dev/quantum/dft.html
@@ -315,15 +314,12 @@ def vwn_c_e(den: Array, Ne:int) :
     b = 3.72744
     c = 12.9352
     x0 = -0.10498
-    # A = jnp.array([[0.0621814, 0.0621814 / 2.]])
-    # b = jnp.array([[3.72744, 7.06042]])
-    # c = jnp.array([[12.9352, 18.0578]])
-    # x0 = jnp.array([[-0.10498, -0.325]])
+   
     clip_cte = 1e-30
     den = jnp.where(den > clip_cte, den, 0.0)
     log_den = jnp.log2(den)
     log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
-    # assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
+   
     log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_den / 3.0
     log_x = log_rs / 2
     rs = 2.**log_rs
@@ -331,7 +327,6 @@ def vwn_c_e(den: Array, Ne:int) :
 
     X = 2. ** (2. * log_x) + 2. ** (log_x + jnp.log2(b)) + c
     X0 = x0**2 + b * x0 + c
-    # assert not jnp.isnan(X).any() and not jnp.isinf(X0).any()
 
     Q = jnp.sqrt(4 * c - b**2)
 
@@ -375,23 +370,15 @@ def b88_x_e(den: Array, score: Array,Ne: int):
 
     den = jnp.clip(den, a_min=clip_cte)
 
-    # # LDA preprocessing data: Note that we duplicate the density to sum and divide in the last eq.
     log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
 
-    # grad_den_norm_sq = (score*den)**2
-    
     score_sqr = jnp.einsum('ij,ij->i', score, score)
     den_sqr = den*den
     grad_den_norm_sq =lax.expand_dims(score_sqr, (1,)) * den_sqr
 
-    
-
     log_grad_den_norm = jnp.log2(jnp.clip(grad_den_norm_sq, a_min=clip_cte)) / 2
 
-    # # GGA preprocessing data
     log_x_sigma = log_grad_den_norm - 4 / 3.0 * log_den
-
-    # # assert not jnp.isnan(log_x_sigma).any() and not jnp.isinf(log_x_sigma).any()
 
     x_sigma = 2**log_x_sigma
 
@@ -405,12 +392,7 @@ def b88_x_e(den: Array, score: Array,Ne: int):
             - jnp.log2(1 + 6 * beta * x_sigma * jnp.arcsinh(x_sigma))
         )
     )
-    # X = jnp.sqrt((score * den)**2)/((Ne*den)**(4/3))
-    # b88_e = -beta*((X*X)/(1+6*beta*X*jnp.arcsinh(X)))
-
-    # def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
-    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    # b88_e = b88_es[0] + (b88_es[1]-b88_es[0])*fzeta(zeta)
+    
     return b88_e*Ne**(2/3)
 
 @jit

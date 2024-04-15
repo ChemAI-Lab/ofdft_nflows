@@ -7,7 +7,7 @@ import pandas as pd
 import time
 
 import jax
-from jax import lax, vmap, numpy as jnp
+from jax import lax, numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
@@ -15,12 +15,11 @@ import chex
 from flax.training import checkpoints
 import optax
 from optax import ema
-from distrax import MultivariateNormalDiag, Laplace
+
 
 from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree, _exchange_correlation
 from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian
 from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
-#from ofdft_normflows.flax_ode import neural_ode, neural_ode_score
 from ofdft_normflows.equiv_flows import Gen_EqvFlow as GCNF
 from ofdft_normflows.promolecular_distrax import ProMolecularDensity
 from ofdft_normflows.utils import get_scheduler, batches_generator_w_score_mix_gaussian
@@ -43,9 +42,7 @@ def compute_integral(params: Any, grid_array: Any, rho: Any, Ne: int, bs: int):
 
 
 def plot_dft_distribution(FIG_DIR: str):
-
     
-
     Ne = 2
     coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])
     z = jnp.array([[1.], [1.]])
@@ -53,11 +50,10 @@ def plot_dft_distribution(FIG_DIR: str):
     mol = {'coords': coords, 'z': z}
 
     m = DFTDistribution(atoms, coords)
-    #normalization_array = (m.coords, m.weights)
-
+   
     # 2D figure
     z = jnp.linspace(-2.25, 2.25, 128)
-    y = 0.  # 0.699199  # H covalent radius
+    y = 0.  
     xx, zz = jnp.meshgrid(z, z)
     X = jnp.array(
         [xx.ravel(), y*jnp.ones_like(xx.ravel()), zz.ravel()]).T
@@ -67,12 +63,9 @@ def plot_dft_distribution(FIG_DIR: str):
 
     vmin = 0.
     vmax = Ne
-    # fig, ax = plt.subplots()
     fig, (ax1) = plt.subplots(1, 1)
-    # plt.clf()
     contour1 = ax1.contourf(
         xx, zz, rho_exact_2D.reshape(xx.shape), levels=25,  vmin=vmin, vmax=vmax)
-    # label=r'$N_{e}\;\rho_{NF}(x)$')
     cbar = fig.colorbar(contour1, ax=ax1)
     cbar.set_label(r'$\rho(x)$')
 
@@ -81,7 +74,6 @@ def plot_dft_distribution(FIG_DIR: str):
     ax1.set_xlabel('X [Bhor]')
     ax1.set_ylabel('Z [Bhor]')
 
-    # plt.legend()
     plt.tight_layout()
     plt.savefig(f'{FIG_DIR}/epoch_rho_dft.svg', transparent=True)
     plt.savefig(f'{FIG_DIR}/epoch_rho_dft.png')
@@ -95,8 +87,6 @@ class F_values:
     hart: chex.ArrayDevice
     xc: chex.ArrayDevice
     
-
-
 def training(tw_kin: str = 'TF',
             v_pot: str = 'HGH',
             h_pot: str = 'MT',
@@ -112,8 +102,7 @@ def training(tw_kin: str = 'TF',
     
     CKPT_DIR_ALL = f"{CKPT_DIR}/checkpoints_all/"
 
-    BHOR = 1.8897259886
-    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])*BHOR 
+    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])*BOHR 
     z =  jnp.array([1., 1.])
     atoms = ['H', 'H']
     mol = {'coords': coords, 'z': z}
@@ -148,17 +137,14 @@ def training(tw_kin: str = 'TF',
         params, batch, model_fwd, 0., 1., 3)    
    
     prior_dist =ProMolecularDensity(z.ravel(), mu)
-    # prior_dist = ProMolecularDensity(jnp.array([1.]), jnp.zeros((1, 3)))
-   
+    
     m = DFTDistribution(atoms, coords)
     normalization_array = (m.coords, m.weights)
 
-    # optimizer = optax.adam(learning_rate=1E-3)
     lr_sched = get_scheduler(epochs, scheduler_type, lr)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
         optax.rmsprop(learning_rate=lr_sched)
-        # optax.adam(learning_rate=lr_sched),
     )
     opt_state = optimizer.init(params)
     energies_ema = ema(decay=0.99)
@@ -166,15 +152,10 @@ def training(tw_kin: str = 'TF',
         F_values(energy=jnp.array(0.), kin=jnp.array(0.), vnuc=jnp.array(0.), hart=jnp.array(0.), xc=jnp.array(0.)))
 
     # load prev parameters
-    if bool_load_params:
-        restored_state = checkpoints.restore_checkpoint(
-            ckpt_dir=CKPT_DIR, target=params, step=0)
-        params = restored_state
-
-    @jax.jit
-    def rho_x(params, samples):
-        zt, logp_zt = NODE_fwd(params, samples)
-        return jnp.exp(logp_zt), zt, None
+    # if bool_load_params:
+    #     restored_state = checkpoints.restore_checkpoint(
+    #         ckpt_dir=CKPT_DIR, target=params, step=0)
+    #     params = restored_state
 
     @jax.jit
     def rho_x_score(params, samples):
@@ -186,7 +167,7 @@ def training(tw_kin: str = 'TF',
         zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
         z0, logp_z0 = NODE_rev(params, zt)
         logp_x = prior_dist.log_prob(z0) - logp_z0
-        return jnp.exp(logp_x)  # logp_x
+        return jnp.exp(logp_x) # logp_x
 
     @jax.jit
     def T(params, samples):
@@ -201,7 +182,6 @@ def training(tw_kin: str = 'TF',
 
     @jax.jit
     def loss(params, u_samples):
-        # den_all, x_all = rho_and_x(params, u_samples)
         den_all, x_all, score_all = rho_x_score(params, u_samples)
 
         den, denp = den_all[:batch_size], den_all[batch_size:]
@@ -242,25 +222,17 @@ def training(tw_kin: str = 'TF',
         params, opt_state, loss_value = step(params, opt_state, batch)  # , ci
         loss_epoch, losses = loss_value
 
-        # Timing the execution of the sample_function
-        start_time = time.time()
-        step(params, opt_state, batch)
-        end_time = time.time()
-
-        # Calculating the elapsed time in seconds
-        elapsed_time_seconds = end_time - start_time
         # functionals values ema
         energies_i_ema, energies_state = energies_ema.update(
             losses, energies_state)
         ei_ema = energies_i_ema.energy
         norm_val = compute_integral(
             params, normalization_array, rho_rev, Ne, 0)
-        # print(normalization_array.shape)
-        # assert 0 
+       
         r_ = {'epoch': i,
               'E': loss_epoch,
               'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'XC': losses.xc,
-              'I': norm_val,'t': elapsed_time_seconds
+              'I': norm_val
               }
 
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
@@ -270,12 +242,12 @@ def training(tw_kin: str = 'TF',
         r_ema = {'epoch': i,
                  'E': energies_i_ema.energy,
                  'T': energies_i_ema.kin, 'V': energies_i_ema.vnuc, 'H': energies_i_ema.hart, 'XC': energies_i_ema.xc,
-                 'I': norm_val,'t': elapsed_time_seconds
+                 'I': norm_val
                  }
         df_ema = pd.concat(
             [df_ema, pd.DataFrame(r_ema, index=[0])], ignore_index=True)
         df_ema.to_csv(
-            f"{CKPT_DIR}/2layer_timed_training_trajectory_{mol_name}_{c_pot}_ema.csv", index=False)
+            f"{CKPT_DIR}/training_trajectory_{mol_name}_{c_pot}_ema.csv", index=False)
 
         #save models
         checkpoints.save_checkpoint(
@@ -295,7 +267,7 @@ def training(tw_kin: str = 'TF',
             vmin = 0.
             vmax = Ne
             fig, ax1 = plt.subplots(1, 1)
-            # plt.clf()
+            
             ax1.text(0.075, 0.92,
                      f'({i}):  E = {ei_ema:.3f}', transform=ax1.transAxes, va='top', fontsize=10, color='w')
             contour1 = ax1.contourf(
@@ -318,7 +290,6 @@ def training(tw_kin: str = 'TF',
             zt = lax.concatenate((yz, xt[:, None]), 1)
             rho_pred = rho_rev(params, zt)
 
-            # exact density DFT
             if i == 0:
                 rho_exact = m.prob(m, zt)
                 norm_dft = jnp.vdot(m.weights, m.prob(m, m.coords))
@@ -337,7 +308,6 @@ def training(tw_kin: str = 'TF',
             plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.svg', transparent=True)
             plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.png')
 
-            # assert 0
 
 
 def main():

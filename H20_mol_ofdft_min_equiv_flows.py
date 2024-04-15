@@ -6,7 +6,7 @@ from typing import Any, Union
 import pandas as pd
 
 import jax
-from jax import lax, vmap, numpy as jnp
+from jax import lax, numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
@@ -14,7 +14,7 @@ import chex
 from flax.training import checkpoints
 import optax
 from optax import ema
-from distrax import MultivariateNormalDiag, Laplace
+
 
 from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree,_exchange_correlation
 from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian
@@ -30,7 +30,7 @@ KeyArray = Union[Array, prng.PRNGKeyArray]
 
 jax.config.update("jax_enable_x64", True)
 
-BHOR = 1.8897259886  # 1AA to BHOR
+BOHR = 1.8897259886  
 
 
 @ partial(jax.jit,  static_argnums=(2,))
@@ -69,10 +69,8 @@ def training(tw_kin: str = 'TF',
     # H	0.0000000	-0.7612710	-0.4756480
     coords = jnp.array([[0.0,	0.0,	0.1189120],
                         [0.0,	0.7612710,	-0.4756480],
-                        [0.0,	-0.7612710,	-0.4756480]])*BHOR
-   
-    # z =  jnp.array([1., 1.])
-    
+                        [0.0,	-0.7612710,	-0.4756480]])*BOHR
+       
     z = jnp.array([8., 1., 1.])
     atoms = ['O', 'H', 'H']
     mol = {'coords': coords, 'z': z}
@@ -106,19 +104,14 @@ def training(tw_kin: str = 'TF',
 
     
     prior_dist =ProMolecularDensity(z.ravel(), mu)
-    
-    # prior_dist = ProMolecularDensity(jnp.array([1.]), jnp.zeros((1, 3)))
-    
     m = DFTDistribution(atoms, coords)
     normalization_array = (m.coords, m.weights)
 
 
-    # optimizer = optax.adam(learning_rate=1E-3)
     lr_sched = get_scheduler(epochs, scheduler_type, lr)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
         optax.rmsprop(learning_rate=lr_sched)
-        # optax.adam(learning_rate=lr_sched),
     )
     opt_state = optimizer.init(params)
     energies_ema = ema(decay=0.99)
@@ -126,15 +119,10 @@ def training(tw_kin: str = 'TF',
        F_values(energy=jnp.array(0.), kin=jnp.array(0.), vnuc=jnp.array(0.), hart=jnp.array(0.), xc=jnp.array(0.)))
 
     # load prev parameters
-    if bool_load_params:
-        restored_state = checkpoints.restore_checkpoint(
-            ckpt_dir=CKPT_DIR, target=params, step=0)
-        params = restored_state
-
-    @jax.jit
-    def rho_x(params, samples):
-        zt, logp_zt = NODE_fwd(params, samples)
-        return jnp.exp(logp_zt), zt, None
+    # if bool_load_params:
+    #     restored_state = checkpoints.restore_checkpoint(
+    #         ckpt_dir=CKPT_DIR, target=params, step=0)
+    #     params = restored_state
 
     @jax.jit
     def rho_x_score(params, samples):
@@ -161,7 +149,6 @@ def training(tw_kin: str = 'TF',
 
     @jax.jit
     def loss(params, u_samples):
-        # den_all, x_all = rho_and_x(params, u_samples)
         den_all, x_all, score_all = rho_x_score(params, u_samples)
 
         den, denp = den_all[:batch_size], den_all[batch_size:]
@@ -209,8 +196,7 @@ def training(tw_kin: str = 'TF',
         ei_ema = energies_i_ema.energy
         norm_val = compute_integral(
             params, normalization_array, rho_rev, Ne, 0)
-        # print(norm_val)
-        # assert 0 
+       
         r_ = {'epoch': i,
               'E': loss_epoch,
               'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'XC': losses.xc,
