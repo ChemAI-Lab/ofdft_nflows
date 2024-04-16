@@ -1,4 +1,5 @@
 from typing import Any, Callable
+from jaxtyping import Array, Float 
 from functools import partial
 
 import jax
@@ -44,88 +45,126 @@ def _kinetic(name: str = 'TF'):
 
 # @ partial(jit,  static_argnums=(3,))
 @jit
-def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array: 
+def kinetic(den: Any, lap_sqrt_den: Any, Ne: int) -> jax.Array:
+    r"""
+    General kinetic functional. 
+
+    Parameters
+    ----------
+    den : Any
+        Density.
+    lap_sqrt_den : Any
+        Laplacian of the square root of the density.
+    Ne : int
+        Number of electrons.
+
+    Returns
+    -------
+    jax.Array
+        Kinetic energy.
+    """     
     rho_val = 1./(den+1E-4)**0.5  # for numerical stability
     return -0.5*jnp.multiply(rho_val, lap_sqrt_den)
 
 
 @jit
-def weizsacker(den: Array, score: Array, Ne: int) -> jax.Array: # type: ignore
-    """    
-    l = 0.2 (W Stich, EKU Gross., Physik A Atoms and Nuclei, 309(1):511, 1982.)
-    T_{\text{Weizsacker}}[\rho] &=& \frac{\lambda}{8} \int \frac{(\nabla \rho)^2}{\rho} dr = 
-                            &=&    \frac{\lambda}{8} \int  \rho \left(\frac{(\nabla \rho)}{\rho}\right)^2 dr\\
+def weizsacker(den: Array, score: Array, Ne: int, lambda_0: float=.2) -> jax.Array:
+    r"""
+    von Weizsacker gradient correction.
+    See paper eq. 3 in https://pubs.aip.org/aip/jcp/article/114/2/631/184186/Thomas-Fermi-Dirac-von-Weizsacker-models-in-finite
+
+    T_{\text{Weizsacker}}[\rho] = \frac{\lambda}{8} \int \frac{(\nabla \rho)^2}{\rho} d\boldsymbol{x} = 
+                                = \frac{\lambda}{8} \int  \rho \left(\frac{(\nabla \rho)}{\rho}\right)^2 d\boldsymbol{x}\\
     T_{\text{Weizsacker}}[\rho] = \mathbb{E}_{\rho} \left[ \left(\frac{(\nabla \rho)}{\rho}\right)^2 \right]
 
+    Parameters
+    ----------
+    den : Array
+        Density.
+    score : Array
+        Gradient of the log-likelihood function. 
+    Ne : int
+        Number of electrons.
+    lambda_0 : float, optional (W Stich, EKU Gross., Physik A Atoms and Nuclei, 309(1):511, 1982.)
+        Phenomenological parameter, by default .2
 
-    Args:
-        score (Array): _description_
-        Ne (int): _description_
-        l (Any, optional): _description_. Defaults to .2.
-
-    Returns:
-        jax.Array: _description_
-    """
-    l = .2
+    Returns
+    -------
+    jax.Array
+        Thomas-Weizsacker kinetic energy.
+    """    
     score_sqr = jnp.einsum('ij,ij->i', score, score)
-    return (l*Ne/8.)*lax.expand_dims(score_sqr, (1,))
+    return (lambda_0*Ne/8.)*lax.expand_dims(score_sqr, (1,))
 
 
 
 @jit
-def thomas_fermi(den: Array, score: Array, Ne: int) -> jax.Array:
-    """
-    T_{\text{TF}}[\rho] &=& \frac{3}{10}(3\pi^2)^{2/3} \int ( \rho)^{5/3} dr \\
+def thomas_fermi(den: Array, score: Array, Ne: int, c: float = (3./10.)*(3.*jnp.pi**2)**(2/3)) -> jax.Array:
+    r"""
+    Thomas-Fermi kinetic functional.
+    See paper eq. 2 in https://pubs.aip.org/aip/jcp/article/114/2/631/184186/Thomas-Fermi-Dirac-von-Weizsacker-models-in-finite
+
+    T_{\text{TF}}[\rho] = \frac{3}{10}(3\pi^2)^{2/3} \int ( \rho)^{5/3} d\boldsymbol{x} \\
     T_{\text{TF}}[\rho] = \mathbb{E}_{\rho} \left[ ( \rho)^{2/3} \right]
 
+    Parameters
+    ----------
+    den : Array
+        Density.
+    score : Array
+        Gradient of the log-likelihood function.
+    Ne : int
+       Number of electrons.
+    l : float, optional
+       Multiplication constant, by default (3./10.)*(3.*jnp.pi**2)**(2/3)
 
-    Args:
-        params (Any): _description_
-        den (Array): _description_
-        Ne (int): _description_
-
-    Returns:
-        jax.Array: _description_
-    """
-
+    Returns
+    -------
+    jax.Array
+        Thomas-Fermi kinetic energy.
+    """  
     val = (den)**(2/3)
-    l = (3./10.)*(3.*jnp.pi**2)**(2/3)
-    return l*(Ne**(5/3))*val
+    return c*(Ne**(5/3))*val
 
 
 # @partial(jit,  static_argnums=(3,))
 @jit
-def thomas_fermi_1D(den: Array, score: Array, Ne: int) -> jax.Array:
-    """
-    T_{\text{TF}}[\rho] &=& \frac{\pi^2}{12}\int ( \rho)^{3} dr \\
-    T_{\text{TF}}[\rho] = \frac{\pi^2}{12}\mathbb{E}_{\rho} \left[ ( \rho)^{2} \right]
+def thomas_fermi_1D(den: Array, score: Array, Ne: int, c: float=(jnp.pi*jnp.pi)/24) -> jax.Array:
+    r"""
+    Thomas-Fermi kinetic functional in 1D.
+    See original paper eq. 18 in https://pubs.aip.org/aip/jcp/article/139/22/224104/193579/Orbital-free-bond-breaking-via-machine-learning
 
-    Args:
-        params (Any): _description_
-        u (Array): _description_
-        Ne (int): _description_
-        fun (callable): _description_
+    T_{\text{TF}}[\rhom] = \frac{\pi^2}{24} \int \left(\rhom(x) \right)^{3} \mathrm{d}x \\ 
+    T_{\text{TF}}[\rhom] = \frac{\pi^2}{24} \Ne^3 \EX_{\rhozero} \left[ (\rhophi(x))^{2} 
 
-    Returns:
-        jax.Array: _description_
-    """
+    Parameters
+    ----------
+    den : Array
+        Density.
+    score : Array
+        Gradient of the log-likelihood function.
+    Ne : int
+        Number of electrons.
+    c : float, optional
+        Multiplication constant, by default (jnp.pi*jnp.pi)/24
+
+    Returns
+    -------
+    jax.Array
+        Thomas-Fermi kinetic energy.
+    """    
     
     den_sqr = den*den
-    l = (jnp.pi*jnp.pi)/24.
-    return l*(Ne**3)*den_sqr
-# ------------------------------------------------------------------------------------------------------------
+    return c*(Ne**3)*den_sqr
+
 # ------------------------------------------------------------------------------------------------------------
 # EXCHANGE-CORRELATION FUNCTIONALS 
 # ------------------------------------------------------------------------------------------------------------
-# def _correlation(name: str = 'correlation'): 
-#     if name.lower() == 'correlation': 
-#         def wrapper(*args): 
-#             return uniform_gas(*args)
 
 def _exchange_correlation(name: str = 'XC'):
-    if name.lower() == 'dirac' or name.lower() == 'dirac_exchange':
+    if name.lower() == 'lda' or name.lower() == 'local_density_approximation':
         def wrapper(*args):
-            return Dirac_exchange(*args) 
+            return lda(*args) 
     if name.lower() == 'xc_1d' or name.lower() == 'exchange_correlation_1d':
         def wrapper(*args):
             return exchange_correlation_one_dimensional(*args)
@@ -140,29 +179,34 @@ def _exchange_correlation(name: str = 'XC'):
             return b88_x_e(*args)
     if name.lower() == 'dirac_b88_x_e': 
         def wrapper(*args): 
-            return Dirac_exchange(*args) + b88_x_e(*args)
+            return lda(*args) + b88_x_e(*args)
     return wrapper
 
 @jit 
-def correlation_vwn_c_e(den: Array, Ne:int):
-    """
+def correlation_vwn_c_e(den: Array, Ne:int) -> jax.Array:
+    r"""
     VWN correlation functional
     See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
     See also text after eq 8.9.6.1 in https://www.theoretical-physics.com/dev/quantum/dft.html
 
+    \epsilon_{\text{C}}^{\text{VWN}} = \frac{A}{2} \left\{ \ln\left(\frac{y^2}{Y(y)}\right) + \frac{2b}{Q} \tan^{-1} \left(\frac{Q}{2y + b}\right) +
+    - \left.\frac{b y_0}{Y(y_0)} \left[\ln\left(\frac{(y-y_0)^2}{Y(y)}\right) + \frac{2(b+2y_0)}{Q}\tan^{-1}  \left(\frac{Q}{2y+b}\right) \right] \right\}
+    
     Parameters
     ----------
-    rho : Float[Array, "grid spin"]
+    den : Array
+        Density. 
+    Ne : int
+       Number of electrons.
     clip_cte : float, optional
-        small clip to prevent numerical instabilities.
+        Small clip to prevent numerical instabilities.
 
     Returns
     -------
-    Float[Array, "grid"]
+    jax.Array
+        VWN correlation energy.
+    """ 
 
-    In our case the "grip spin" is equal to zero. 
-    """
-    
     A = 0.0621814
     b = 3.72744
     c = 12.9352
@@ -201,20 +245,30 @@ def correlation_vwn_c_e(den: Array, Ne:int):
     return e_correlation
 
 @jit 
-def correlation_pw92_c_e(den: Array, Ne:int):
+def correlation_pw92_c_e(den: Array, Ne:int) -> jax.Array:
     """
-    Eq 10 in
-    https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
+    PW92 correlation functional
+    See eq 10 in https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
+
+    \epsilon_{\text{C}}^{\text{PW92}} = -2A(1+\alpha_1 \rs) \ln \left[{1 + \frac{1}{2A(\beta_1 \rs^{1/2} + \beta_2 \rs + \beta_3 \rs^{3/2} + \beta_4 \rs^{2}}}\right]
+
+    \rs = \left ( \frac{3}{4\pi \rhom}  \right)^{\frac{1}{3}}
 
     Parameters
     ----------
-    rho : Float[Array, "grid spin"]
+    den : Array
+        Density.
+    Ne : int
+        Number of electrons.
     clip_cte : float, optional
-        small clip to prevent numerical instabilities.
+        Small clip to prevent numerical instabilities.
 
     Returns
     -------
-    """
+    jax.Array
+        PW92 correlation energy.
+    """    
+    
     clip_cte: float = 1e-30
     A_ = 0.031091
     alpha1 = 0.21370
@@ -238,7 +292,26 @@ def correlation_pw92_c_e(den: Array, Ne:int):
     return e_correlation
 
 @jit
-def exchange_correlation_one_dimensional(den:Array, Ne:int): 
+def exchange_correlation_one_dimensional(den:Array, Ne:int) -> jax.Array:
+    """
+    1D exchange-correlation functional
+    See eq 7 in https://iopscience.iop.org/article/10.1088/1751-8113/42/21/214021 
+
+    \epsilon_{\text{XC}} (\rs,\zeta) = \frac{\azeta + \bzeta \rs + \czeta \rs^{2}}{1 + \dzeta \rs + \ezeta \rs^2 + \fzeta \rs^3} + \frac{\gzeta \rs \ln[{\rs + 
+                                        + \alphazeta \rs^{\betazeta} }]}{1 + \hzeta \rs^2}
+
+    Parameters
+    ----------
+    den : Array
+        Density.
+    Ne : int
+        Number of electrons.
+
+    Returns
+    -------
+    jax.Array
+        Exchange-correlation energy.
+    """     
     rs = 1/(2*Ne*den)
     a0 = -0.8862269
     b0 = -2.1414101
@@ -258,113 +331,33 @@ def exchange_correlation_one_dimensional(den:Array, Ne:int):
     f2 = n2/d2 
     return Ne*(f1 + f2)
 
-@jit
-def pw92_c_e(den: Array, Ne: int):
-    """
-    Eq 10 in
-    https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
-
-    Parameters
-    ----------
-    rho : Float[Array, "grid spin"]
-    clip_cte : float, optional
-        small clip to prevent numerical instabilities.
-
-    Returns
-    -------
-    """
-    clip_cte: float = 1e-30
-    A_ = 0.031091
-    alpha1 = 0.21370
-    beta1 = 7.5957
-    beta2 =3.5876
-    beta3 = 1.6382
-    beta4 = 0.49294
-
-    log_den = jnp.log2(jnp.clip(den.sum(axis=1, keepdims=True), a_min=clip_cte))
-    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_den / 3.0
-    brs_1_2 = 2 ** (log_rs / 2 + jnp.log2(beta1))
-    ars = 2 ** (log_rs + jnp.log2(alpha1))
-    brs = 2 ** (log_rs + jnp.log2(beta2))
-    brs_3_2 = 2 ** (3 * log_rs / 2 + jnp.log2(beta3))
-    brs2 = 2 ** (2 * log_rs + jnp.log2(beta4))
-
-    e_PF = -2 * A_ * (1 + ars) * jnp.log(1 + (1 / (2 * A_)) / (brs_1_2 + brs + brs_3_2 + brs2))
-
-    return e_PF * Ne
-
-@jit
-def vwn_c_e(den: Array, Ne:int) :
-    """
-    VWN correlation functional
-    See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
-    See also text after eq 8.9.6.1 in https://www.theoretical-physics.com/dev/quantum/dft.html
-
-    Parameters
-    ----------
-    rho : Float[Array, "grid spin"]
-    clip_cte : float, optional
-        small clip to prevent numerical instabilities.
-
-    Returns
-    -------
-    Float[Array, "grid"]
-    """
-    A = 0.0621814
-    b = 3.72744
-    c = 12.9352
-    x0 = -0.10498
-   
-    clip_cte = 1e-30
-    den = jnp.where(den > clip_cte, den, 0.0)
-    log_den = jnp.log2(den)
-    log_den = jnp.log2(jnp.clip(den, a_min=clip_cte))
-   
-    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_den / 3.0
-    log_x = log_rs / 2
-    rs = 2.**log_rs
-    x = 2.**log_x
-
-    X = 2. ** (2. * log_x) + 2. ** (log_x + jnp.log2(b)) + c
-    X0 = x0**2 + b * x0 + c
-
-    Q = jnp.sqrt(4 * c - b**2)
-
-    # check eq with https://github.com/ElectronicStructureLibrary/libxc/blob/master/maple/vwn.mpl
-    e_PF = (
-        A
-        / 2.
-        * (
-            2. * jnp.log(x)
-            - jnp.log(X)
-            + 2. * b / Q * jnp.arctan(Q / (2. * x + b))
-            - b
-            * x0
-            / X0
-            * (jnp.log((x - x0) ** 2. / X) + 2. * (2. * x0 + b) / Q * jnp.arctan(Q / (2. * x + b)))
-        )
-    )
-    
-    return e_PF * Ne
 
 @jit 
-def b88_x_e(den: Array, score: Array,Ne: int):
+def b88_x_e(den: Array, score: Array,Ne: int) -> jax.Array : 
     r"""
     B88 exchange functional
+
+    \epsilon_{\text{X}}^{\text{B88}}&= -\beta \frac{X^2}{\left(1 + 6 \beta X \sinh^{-1}(X) \right)} \rhom(\boldsymbol{x})^{1/3}
+
     See eq 8 in https://journals.aps.org/pra/abstract/10.1103/PhysRevA.38.3098
     See also https://github.com/ElectronicStructureLibrary/libxc/blob/4bd0e1e36347c6d0a4e378a2c8d891ae43f8c951/maple/gga_exc/gga_x_b88.mpl#L22
 
     Parameters
     ----------
-    rho : Float[Array, "grid spin"]
-    grad_rho : Float[Array, "grid spin dimension"]
+    den : Array
+        Density.
+    score : Array
+        Gradient of the log-likelihood function.
+    Ne : int
+        Number of electrons.
     clip_cte : float, optional
         small clip to prevent numerical instabilities.
 
     Returns
     -------
-    Float[Array, "grid"]
-    """
+    jax.Array
+        B88 exchange energy.
+    """  
     clip_cte =  1e-30
     beta = 0.0042
 
@@ -396,24 +389,36 @@ def b88_x_e(den: Array, score: Array,Ne: int):
     return b88_e*Ne**(2/3)
 
 @jit
-def Dirac_exchange(den: Array,score: Array, Ne: int) -> jax.Array:
-    """
-    ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\int  \rho^{4/3} dr \\
-    ^{Dirac}E_{\text{x}}[\rho] = -\frac{3}{4}\left(\frac{3}{\pi}\right)^{1/3}\mathbb{E}_{\rho} \left[ \rho^{1/3} \right]
+def lda(den: Array,score: Array, Ne: int) -> jax.Array:
+    r"""
+    Local density approximation (LDA) functional.
 
-    Args:
-        params (Any): _description_
-        den (Array): _description_
-        Ne (int): _description_
+    See eq 2.72 from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
 
-    Returns:
-        jax.Array: _description_
-    """
+    \epsilon_{\text{X}}^{\text{LDA}} &= -\frac{3}{4} \left(\frac{3}{\pi}\right)^{1/3} \rhom(\boldsymbol{x})^{1/3}
+
+
+    Parameters
+    ----------
+    den : Array
+        Density.
+    score : Array
+        Gradient of the log-likelihood function.
+    Ne : int
+        Number of electrons.
+
+    Returns
+    -------
+    jax.Array
+        LDA exchange energy.
+    """    
     l = -(3/4)*(Ne**(4/3))*(3/jnp.pi)**1/3
 
     return l*den**(1/3)
 
 
+# ------------------------------------------------------------------------------------------------------------
+# HARTREE FUNCTIONALS
 # ------------------------------------------------------------------------------------------------------------
 
 
@@ -432,19 +437,57 @@ def _hartree(name: str = 'HP'):
 
 
 @jit
-def soft_coulomb(x:Any,xp:Any,Ne: int):
+def soft_coulomb(x:Any,xp:Any,Ne: int) -> jax.Array:
+    r"""
+    Soft-Coulomb potential.
+
+    See eq 6 in https://pubs.aip.org/aip/jcp/article/139/22/224104/193579/Orbital-free-bond-breaking-via-machine-learning
+
+    Parameters
+    ----------
+    x : Any
+        A point where the potential is evaluated.
+    xp : Any
+        A point where the charge density is zero. 
+    Ne : int
+        Number of electrons.
+
+    Returns
+    -------
+    jax.Array
+        Soft version of the Coulomb potential.
+    """    
     v_coul = 1/(jnp.sqrt( 1 + (x-xp)*(x-xp)))
     return v_coul*Ne**2
 
 @jit
-def Hartree_potential(x: Any, xp: Any, Ne: int, eps=1E-5):
+def Hartree_potential(x: Any, xp: Any, Ne: int, eps=1E-5) -> jax.Array:
+    r"""
+    Classical electron-electron repulsion. 
+
+    Parameters
+    ----------
+    x : Any
+        A point where the potential is evaluated.
+    xp : Any
+        A point where the charge density is zero.
+    Ne : int
+        Number of electrons.
+    eps : _type_, optional
+        Small constant to avoid numerical issues, by default 1E-5
+
+    Returns
+    -------
+    jax.Array
+        Hartree Potential.
+    """    
     z = jnp.sum((x-xp)*(x-xp)+eps, axis=-1, keepdims=True)
     z = 1./(z**0.5)
     return 0.5*(Ne**2)*z
 
 
 @jit
-def Hartree_potential_MT(x: Any, xp: Any, Ne: int, alpha=0.5):
+def Hartree_potential_MT(x: Any, xp: Any, Ne: int, alpha=0.5) -> jax.Array:
     # Martyna-Tuckerman J. Chem. Phys. 110, 2810–2821 (1999), Eq. B1, alpha_conv * L > 7
     # alpha_conv * L = 5, L = 10 A -> alpha_conv = 0.9448623 (Table 1 of J. Chem. Phys. 110, 2810–2821 (1999))
 
@@ -478,7 +521,30 @@ def _nuclear(name: str = 'NP'):
     return wrapper
 
 @jit
-def attraction(x:Any, R:float, Z_alpha:int, Z_beta:int, Ne: int): 
+def attraction(x:Any, R:float, Z_alpha:int, Z_beta:int, Ne: int) -> jax.Array:
+    """
+    Attraction between two nuclei.
+
+    See eq 7 in https://pubs.aip.org/aip/jcp/article/139/22/224104/193579/Orbital-free-bond-breaking-via-machine-learning 
+
+    Parameters
+    ----------
+    x : Any
+        A point where the potential is evaluated.
+    R : float
+        Distance between the two nuclei.
+    Z_alpha : int
+        Atomic number of the first nucleus.
+    Z_beta : int
+        Atomic number of the second nucleus.
+    Ne : int
+        Number of electrons.
+
+    Returns
+    -------
+    jax.Array
+        Attraction to the nuclei of charges Z_alpha and Z_beta. 
+    """     
     v_x = - Z_alpha/(jnp.sqrt(1 + (x + R/2)**2))  - Z_beta/(jnp.sqrt(1 + (x - R/2)**2))
     return v_x*Ne 
 
@@ -488,8 +554,26 @@ def harmonic_potential(params: Any, x: Any, Ne: int, k: Any = 1.) -> jax.Array:
 
 
 @partial(jax.jit,  static_argnums=(3,))
-def Nuclei_potential(x: Any, Ne: int, mol_info: Any):
-    eps = 1E-4  # 0.2162
+def Nuclei_potential(x: Any, Ne: int, mol_info: Any, eps: float = 1E-4) -> jax.Array:
+    r"""
+    External potential. 
+
+    Parameters
+    ----------
+    x : Any
+        A point where the potential is evaluated.
+    Ne : int
+        Number of electrons.
+    mol_info : Any
+        Molecular information.
+    eps : float, optional
+       Small constant to avoid numerical issues, by default 1E-4
+
+    Returns
+    -------
+    jax.Array
+        Electron-nuclei interaction potential.
+    """    
 
     @jit
     def _potential(x: Any, molecule: Any):

@@ -20,14 +20,27 @@ class ProMolecularDensity(distrax.Distribution):
                  loc: Optional[Array],
                  scale_diag: Optional[Array]=None,
                  units: str = 'Bhor',
-                 ):
-        """_summary_
-
-          Args:
-              z (Optional[Array]): _description_
-              loc (Optional[Array]): _description_
-              scale_diag (Optional[Array], optional): _description_. Defaults to None.
+                 ) -> jax.Array:
         """
+        
+
+        Parameters
+        ----------
+        z : Optional[Array]
+            Atomic numbers of the atoms in the molecule.
+        loc : Optional[Array]
+            Molecular coordinates.
+        scale_diag : Optional[Array], optional
+            Sigma matrix, by default None
+        units : str, optional
+            Interatomic unit distance, by default 'Bhor'
+
+        Returns
+        -------
+        jax.Array
+            _description_
+        """        
+       
 
         self.loc = lax.expand_dims(loc, dimensions=(1,))
         self.units = units
