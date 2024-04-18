@@ -1,6 +1,6 @@
 # OF-DFT with Continuous-time Normalizing Flows
 
-This repository contains the original implementation of the experiments for ["Orbital-Free Density Functional Theory with Continuous Normalizing Flows"](archive).
+This repository contains the original implementation of the experiments for ["Leveraging Normalizing Flows for Orbital-Free Density Functional Theory"](https://arxiv.org/abs/2404.08764).
 
 --------------------
 
