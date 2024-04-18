@@ -19,6 +19,16 @@ $$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}],$$
 
 where we parameterize the electron density $\rho_\mathcal{M} := N_{e}  \rho_{\phi}(\mathbf{x})$, where $\rho_{\phi}$ is a NF, this form is also referred to as the *shape factor*. The samples are drawn from the base distribution $\rho_0$ and transformed by, $$\mathcal{x} = T_\phi(\mathcal{z}) := \mathcal{z} + \int_{t_{0}}^{T} g_\phi(\mathcal{z}(t),t) \mathrm{d}t.$$
 
+For the one-dimensional simulations, the architecture of $g_\phi$ is a standard feed-forward neural network (NN),
+$$g_\phi = \sum_\ell^M f_\ell(\mathbf{z}_\ell(t)),$$
+
+where $f_\ell(\cdot)$ is a linear layer followed by an activation function, and $M$ is the number of layers. For this work, $g_\phi$ has 3 layers, each with 512 neurons, and the $\tanh$ activation function. For the simulation in three dimensions, $g_\phi$ is parametrized by a permutation equivariant graph NN (GNN), 
+
+$$g_\phi(\mathbf{z},t) = \sum_i^{N_a} f_{\ell}(\|\mathbf{z}(t) - \mathbf{R}_i\|_2,\tilde{Z}_i)(\mathbf{z}(t)- \mathbf{R}_i),$$
+
+where $\tilde{Z_i}$ is the atomic number of the $i^{th}$-nucleus, encoded as a one-hot vector ($[0,\cdots,1_{i},\cdots,0]$), $N_a$ is the number of nucleus in the molecule, and $f_{\ell}(\cdot)$ is a feed-forward NN with $64$ neurons per layer, also with the $\tanh$ activation function.
+
+
 ## Results
 
 We successfully replicate the electronic density for the one-dimensional Lithium hydride molecule with varying interatomic distances, as well as comprehensive simulations of hydrogen and water molecules, all conducted in
