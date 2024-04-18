@@ -12,17 +12,17 @@ Array = chex.Array
 PRNGKey = chex.PRNGKey
 
 
-AAtoBhor = 1.8897259886
+AAtoBohr = 1.8897259886
 
 
 class ProMolecularDensity(distrax.Distribution):
     def __init__(self, z: Optional[Array],
                  loc: Optional[Array],
                  scale_diag: Optional[Array]=None,
-                 units: str = 'Bhor',
-                 ) -> jax.Array:
+                 units: str = 'Bohr',
+                 ):
         """
-        
+        Creates a distribution for a molecule with a mixture of Gaussian components.
 
         Parameters
         ----------
@@ -33,15 +33,10 @@ class ProMolecularDensity(distrax.Distribution):
         scale_diag : Optional[Array], optional
             Sigma matrix, by default None
         units : str, optional
-            Interatomic unit distance, by default 'Bhor'
+            Interatomic unit distance, by default 'Bohr'
 
-        Returns
-        -------
-        jax.Array
-            _description_
         """        
        
-
         self.loc = lax.expand_dims(loc, dimensions=(1,))
         self.units = units
 
@@ -51,22 +46,19 @@ class ProMolecularDensity(distrax.Distribution):
             self.scale_diag = lax.expand_dims(scale_diag, dimensions=(1))
 
         if self.units.lower() == 'aa' or self.units.lower() == 'angstrom':
-            self.loc = self.loc*AAtoBhor
-            self.scale_diag = self.scale_diag*AAtoBhor
+            self.loc = self.loc*AAtoBohr
+            self.scale_diag = self.scale_diag*AAtoBohr
 
         self.logits = z
         self.probs = z/jnp.linalg.norm(z, ord=1)
-        # self.probs = nn.softmax(z)
         self.mixture_dist = Categorical(probs=self.probs)
         self.mixture_probs = self.mixture_dist.probs
         self.components_dist = MultivariateNormalDiag(
             loc=self.loc, scale_diag=self.scale_diag)
 
-        # assert self.loc.shape[1] == self.scale_diag.shape[1] == self.probs.shape[-1]
     @jax.jit
     def prob(self, value):
         log_px_components_dist = self.components_dist.log_prob(value).T
-        print(log_px_components_dist.shape)
         px_components_dist = jnp.exp(log_px_components_dist)
         px = px_components_dist@self.mixture_probs[:, None]
         return px

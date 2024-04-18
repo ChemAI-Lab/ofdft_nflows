@@ -14,7 +14,7 @@ def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim
     Parameters
     ----------
     params : Any
-       
+       Flow parameters.
     batch : Any
         Sampled batch of data. 
     f : Callable
@@ -57,7 +57,7 @@ def neural_ode_score(params: Any, batch: Any, f: Callable, t0: float, t1: float,
     Parameters
     ----------
     params : Any
-       
+       Flow parameters.
     batch : Any
         Sampled batch of data.
     f : Callable

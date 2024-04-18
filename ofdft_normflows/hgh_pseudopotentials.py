@@ -10,6 +10,9 @@ H_pp_params = {'Zion': 1., 'rloc': 0.2,
 O_pp_params = {'Zion': 6., 'rloc': 0.247621,
                'C1': -16.580318, 'C2': 2.395701, 'C3': 0., 'C4': 0., }
 
+#
+# UNDER CONSTRUCTION
+#
 
 @jax.jit
 def cartesian_to_spherical(cartesian_coords):

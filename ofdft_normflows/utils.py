@@ -18,14 +18,20 @@ BHOR = 1.  # 1.8897259886  # 1AA to BHOR
 def laplacian(params: Any, X: Array, fun: callable) -> jax.Array:
     """_summary_
 
-    Args:
-        X (Array): _description_
-        params (Any): _description_
-        fun (callable): _description_
+    Parameters
+    ----------
+    params : Any
+        _description_
+    X : Array
+        _description_
+    fun : callable
+        _description_
 
-    Returns:
-        jax.Array: _description_
-    """
+    Returns
+    -------
+    jax.Array
+        _description_
+    """    
     @partial(jit,  static_argnums=(2,))
     def _laplacian(params: Any, X: Array, fun: callable):
         hes_ = hessian(fun, argnums=1)(
@@ -40,7 +46,25 @@ def laplacian(params: Any, X: Array, fun: callable) -> jax.Array:
 
 @partial(jit,  static_argnums=(2,))
 def score(params: Any, X: Array, fun: callable) -> jax.Array:
+    """
+    Function that evaluates the score of the model. Using jax.jacrev to compute the gradient of the function
+    and then reshaping the output to the original shape of the input and then vmapping the function 
+    to evaluate the score for each element in the input.
 
+    Parameters
+    ----------
+    params : Any
+        Parameters of the model.
+    X : Array
+        X values to evaluate the score.
+    fun : callable
+        Function to evaluate the score.
+
+    Returns
+    -------
+    jax.Array
+        The score of the model.
+    """    
     @jit
     def _score(params: Any, xi: Array):
         score_ = jax.jacrev(fun, argnums=1)(params, xi[jnp.newaxis])
@@ -49,9 +73,21 @@ def score(params: Any, X: Array, fun: callable) -> jax.Array:
     v_score = vmap(_score, in_axes=(None, 0))
     return v_score(params, X)
 
-def batches_generator_w_score_mix_gaussian(key: prng.PRNGKeyArray, batch_size: int, prior_dist: Callable):
-    # v_score = vmap(jax.jacrev(lambda x:
-    #                           prior_dist.log_prob(x)))
+def batch_generator(key: prng.PRNGKeyArray, batch_size: int, prior_dist: Callable):
+    """
+    Generator that yields batches of samples from the prior distribution.
+
+    Parameters
+    ----------
+    key : prng.PRNGKeyArray
+        Key to generate random numbers.
+    batch_size : int
+        Size of the batch.
+    prior_dist : Callable
+        Prior distribution.
+
+    """    
+    
     v_score = jax.vmap(jax.grad(lambda x:
                               prior_dist.log_prob(x).sum()))
     while True:
@@ -71,9 +107,24 @@ def batches_generator_w_score_mix_gaussian(key: prng.PRNGKeyArray, batch_size: i
 
         yield lax.concatenate((samples0, samples1), 0)
 
-def batches_generator_w_score_mult_gaussian(key: prng.PRNGKeyArray, batch_size: int, prior_dist: Callable):
+def batche_generator_1D(key: prng.PRNGKeyArray, batch_size: int, prior_dist: Callable):
+    """
+    Generator that yields batches of samples from the prior distribution.
+
+    Parameters
+    ----------
+    key : prng.PRNGKeyArray
+        Key to generate random numbers.
+    batch_size : int
+        Size of the batch.
+    prior_dist : Callable
+        Prior distribution.
+
+    """    
     v_score = vmap(jax.jacrev(lambda x:
                               prior_dist.log_prob(x)))
+    # v_score = jax.vmap(jax.grad(lambda x:
+    #                           prior_dist.log_prob(x).sum()))
     while True:
         _, key = jrnd.split(key)
         samples = prior_dist.sample(seed=key, sample_shape=batch_size)
