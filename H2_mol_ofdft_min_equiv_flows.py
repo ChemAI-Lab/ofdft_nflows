@@ -7,7 +7,7 @@ import pandas as pd
 import time
 
 import jax
-from jax import lax, numpy as jnp
+from jax import lax, vmap, numpy as jnp
 import jax.random as jrnd
 from jax._src import prng
 
@@ -16,13 +16,12 @@ from flax.training import checkpoints
 import optax
 from optax import ema
 
-
-from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree, _exchange_correlation
-from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian
-from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
+from ofdft_normflows import _kinetic, _nuclear, _hartree, _exchange_correlation
+from ofdft_normflows import DFTDistribution,MixGaussian
+from ofdft_normflows import neural_ode, neural_ode_score
 from ofdft_normflows.equiv_flows import Gen_EqvFlow as GCNF
-from ofdft_normflows.promolecular_distrax import ProMolecularDensity
-from ofdft_normflows.utils import get_scheduler, batches_generator_w_score_mix_gaussian
+from ofdft_normflows import ProMolecularDensity
+from ofdft_normflows import get_scheduler, batch_generator
 
 import matplotlib.pyplot as plt
 
@@ -50,10 +49,10 @@ def plot_dft_distribution(FIG_DIR: str):
     mol = {'coords': coords, 'z': z}
 
     m = DFTDistribution(atoms, coords)
-   
+
     # 2D figure
     z = jnp.linspace(-2.25, 2.25, 128)
-    y = 0.  
+    y = 0. 
     xx, zz = jnp.meshgrid(z, z)
     X = jnp.array(
         [xx.ravel(), y*jnp.ones_like(xx.ravel()), zz.ravel()]).T
@@ -64,8 +63,10 @@ def plot_dft_distribution(FIG_DIR: str):
     vmin = 0.
     vmax = Ne
     fig, (ax1) = plt.subplots(1, 1)
+  
     contour1 = ax1.contourf(
         xx, zz, rho_exact_2D.reshape(xx.shape), levels=25,  vmin=vmin, vmax=vmax)
+    
     cbar = fig.colorbar(contour1, ax=ax1)
     cbar.set_label(r'$\rho(x)$')
 
@@ -87,6 +88,8 @@ class F_values:
     hart: chex.ArrayDevice
     xc: chex.ArrayDevice
     
+
+
 def training(tw_kin: str = 'TF',
             v_pot: str = 'HGH',
             h_pot: str = 'MT',
@@ -102,7 +105,8 @@ def training(tw_kin: str = 'TF',
     
     CKPT_DIR_ALL = f"{CKPT_DIR}/checkpoints_all/"
 
-    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])*BOHR 
+    BOHR = 1.8897259886
+    coords = jnp.array([[0., 0., -1.4008538753/2], [0., 0., 1.4008538753/2]])*BOHR
     z =  jnp.array([1., 1.])
     atoms = ['H', 'H']
     mol = {'coords': coords, 'z': z}
@@ -137,7 +141,7 @@ def training(tw_kin: str = 'TF',
         params, batch, model_fwd, 0., 1., 3)    
    
     prior_dist =ProMolecularDensity(z.ravel(), mu)
-    
+   
     m = DFTDistribution(atoms, coords)
     normalization_array = (m.coords, m.weights)
 
@@ -167,7 +171,7 @@ def training(tw_kin: str = 'TF',
         zt = lax.concatenate((x, jnp.zeros((x.shape[0], 1))), 1)
         z0, logp_z0 = NODE_rev(params, zt)
         logp_x = prior_dist.log_prob(z0) - logp_z0
-        return jnp.exp(logp_x) # logp_x
+        return jnp.exp(logp_x)  # logp_x
 
     @jax.jit
     def T(params, samples):
@@ -213,7 +217,7 @@ def training(tw_kin: str = 'TF',
         return params, opt_state, loss_value
 
     _, key = jrnd.split(key)
-    gen_batches = batches_generator_w_score_mix_gaussian(key, batch_size, prior_dist) 
+    gen_batches = batch_generator(key, batch_size, prior_dist) 
 
     df = pd.DataFrame()
     df_ema = pd.DataFrame()
@@ -222,13 +226,12 @@ def training(tw_kin: str = 'TF',
         params, opt_state, loss_value = step(params, opt_state, batch)  # , ci
         loss_epoch, losses = loss_value
 
-        # functionals values ema
         energies_i_ema, energies_state = energies_ema.update(
             losses, energies_state)
         ei_ema = energies_i_ema.energy
         norm_val = compute_integral(
             params, normalization_array, rho_rev, Ne, 0)
-       
+    
         r_ = {'epoch': i,
               'E': loss_epoch,
               'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'XC': losses.xc,
@@ -255,9 +258,9 @@ def training(tw_kin: str = 'TF',
 
         #PLOTTING
         if i % 20 == 0 or i <= 25:
-            # 2D figure
+            # 2D Figure
             z = jnp.linspace(-2.25, 2.25, 128)
-            y = 0.  # 0.699199  # H covalent radius
+            y = 0.  
             xx, zz = jnp.meshgrid(z, z)
             X = jnp.array(
                 [xx.ravel(), y*jnp.ones_like(xx.ravel()), zz.ravel()]).T
@@ -267,7 +270,7 @@ def training(tw_kin: str = 'TF',
             vmin = 0.
             vmax = Ne
             fig, ax1 = plt.subplots(1, 1)
-            
+           
             ax1.text(0.075, 0.92,
                      f'({i}):  E = {ei_ema:.3f}', transform=ax1.transAxes, va='top', fontsize=10, color='w')
             contour1 = ax1.contourf(

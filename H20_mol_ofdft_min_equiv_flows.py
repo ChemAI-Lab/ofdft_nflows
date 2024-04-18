@@ -16,12 +16,12 @@ import optax
 from optax import ema
 
 
-from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree,_exchange_correlation
-from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian
-from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
+from ofdft_normflows import _kinetic, _nuclear, _hartree, _exchange_correlation
+from ofdft_normflows import DFTDistribution
+from ofdft_normflows import neural_ode, neural_ode_score
 from ofdft_normflows.equiv_flows import Gen_EqvFlow as GCNF
-from ofdft_normflows.promolecular_distrax import ProMolecularDensity
-from ofdft_normflows.utils import get_scheduler,batches_generator_w_score_mix_gaussian
+from ofdft_normflows import ProMolecularDensity
+from ofdft_normflows import get_scheduler, batch_generator
 
 import matplotlib.pyplot as plt
 
@@ -181,7 +181,7 @@ def training(tw_kin: str = 'TF',
         return params, opt_state, loss_value
 
     _, key = jrnd.split(key)
-    gen_batches = batches_generator_w_score_mix_gaussian(key, batch_size, prior_dist)
+    gen_batches = batch_generator(key, batch_size, prior_dist)
 
     df = pd.DataFrame()
     df_ema = pd.DataFrame()

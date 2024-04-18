@@ -16,12 +16,12 @@ import optax
 from optax import ema
 
 
-from ofdft_normflows.functionals import _kinetic, _nuclear, _hartree,_exchange_correlation
-from ofdft_normflows.dft_distrax import DFTDistribution,MixGaussian
-from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
+from ofdft_normflows import _kinetic, _nuclear, _hartree, _exchange_correlation
+from ofdft_normflows import DFTDistribution
+from ofdft_normflows import neural_ode, neural_ode_score
 from ofdft_normflows.equiv_flows import Gen_EqvFlow as GCNF
-from ofdft_normflows.promolecular_distrax import ProMolecularDensity
-from ofdft_normflows.utils import get_scheduler, batches_generator_w_score_mix_gaussian
+from ofdft_normflows import ProMolecularDensity
+from ofdft_normflows import get_scheduler, batch_generator
 
 import matplotlib.pyplot as plt
 
@@ -31,8 +31,7 @@ KeyArray = Union[Array, prng.PRNGKeyArray]
 jax.config.update("jax_enable_x64", True)
 
 
-BHOR = 1.8897259886  # 1AA to BHOR
-
+BOHR = 1.8897259886  # 1AA to BHOR
 
 
 @ partial(jax.jit,  static_argnums=(2,))
@@ -46,7 +45,7 @@ def plot_dft_distribution(FIG_DIR: str):
 
   
     Ne = 4
-    coords = jnp.array([[0., 0., -3.0139239792/2], [0., 0., 3.0139239792/2]])
+    coords = jnp.array([[0., 0., -1.5949/2], [0., 0., 1.5949/2]])*BOHR
     #Li H
     z = jnp.array([[3.], [1.]])
     atoms = ['Li', 'H']
@@ -113,7 +112,7 @@ def training(tw_kin: str = 'TF',
     CKPT_DIR_ALL = f"{CKPT_DIR}/checkpoints_all/"
    
     #1.5949 A to Bohr
-    coords = jnp.array([[0., 0., -3.0139239792/2], [0., 0., 3.0139239792/2]])
+    coords = jnp.array([[0., 0., -1.5949/2], [0., 0., 1.5949/2]])*BOHR
     z = jnp.array([3., 1.])
     atoms = ['Li', 'H']
     mol = {'coords': coords, 'z': z}
@@ -150,12 +149,10 @@ def training(tw_kin: str = 'TF',
     m = DFTDistribution(atoms, coords)
     normalization_array = (m.coords, m.weights)
 
-    # optimizer = optax.adam(learning_rate=1E-3)
     lr_sched = get_scheduler(epochs, scheduler_type, lr)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),
         optax.rmsprop(learning_rate=lr_sched)
-        # optax.adam(learning_rate=lr_sched),
     )
     opt_state = optimizer.init(params)
     energies_ema = ema(decay=0.99)
@@ -163,10 +160,10 @@ def training(tw_kin: str = 'TF',
         F_values(energy=jnp.array(0.), kin=jnp.array(0.), vnuc=jnp.array(0.), hart=jnp.array(0.), xc=jnp.array(0.)))
 
     # load prev parameters
-    if bool_load_params:
-        restored_state = checkpoints.restore_checkpoint(
-            ckpt_dir=CKPT_DIR, target=params, step=0)
-        params = restored_state
+    # if bool_load_params:
+    #     restored_state = checkpoints.restore_checkpoint(
+    #         ckpt_dir=CKPT_DIR, target=params, step=0)
+    #     params = restored_state
 
     @jax.jit
     def rho_x(params, samples):
@@ -199,7 +196,6 @@ def training(tw_kin: str = 'TF',
 
     @jax.jit
     def loss(params, u_samples):
-        # den_all, x_all = rho_and_x(params, u_samples)
         den_all, x_all, score_all = rho_x_score(params, u_samples)
 
         den, denp = den_all[:batch_size], den_all[batch_size:]
@@ -232,7 +228,7 @@ def training(tw_kin: str = 'TF',
         return params, opt_state, loss_value
 
     _, key = jrnd.split(key)
-    gen_batches =  batches_generator_w_score_mix_gaussian(key, batch_size, prior_dist)
+    gen_batches =  batch_generator(key, batch_size, prior_dist)
    
 
     df = pd.DataFrame()
@@ -277,7 +273,7 @@ def training(tw_kin: str = 'TF',
         if i % 20 == 0 or i <= 25:
             # 2D figure
             z = jnp.linspace(-2.25, 2.25, 128)
-            y = 0.  # 0.699199  # H covalent radius
+            y = 0.  
             xx, zz = jnp.meshgrid(z, z)
             X = jnp.array(
                 [xx.ravel(), y*jnp.ones_like(xx.ravel()), zz.ravel()]).T
@@ -286,7 +282,6 @@ def training(tw_kin: str = 'TF',
             vmin = 0.
             vmax = Ne
             fig, ax1 = plt.subplots(1, 1)
-            # plt.clf()
             ax1.text(0.075, 0.92,
                      f'({i}):  E = {ei_ema:.3f}', transform=ax1.transAxes, va='top', fontsize=10, color='w')
             contour1 = ax1.contourf(

@@ -18,7 +18,7 @@ from distrax import MultivariateNormalDiag
 from ofdft_normflows.functionals import _kinetic, _hartree, _nuclear, _exchange_correlation
 from ofdft_normflows.jax_ode import neural_ode, neural_ode_score
 from ofdft_normflows.cn_flows import Gen_CNFSimpleMLP as CNF
-from ofdft_normflows.utils import get_scheduler, batches_generator_w_score_mult_gaussian
+from ofdft_normflows.utils import get_scheduler, batche_generator_1D
 
 
 import matplotlib.pyplot as plt
@@ -88,10 +88,10 @@ def training(tw_kin: str = 'TF',
         F_values(energy=jnp.array(0.), kin=jnp.array(0.), vnuc=jnp.array(0.), hart=jnp.array(0.), xc=jnp.array(0.)))
     
     # load prev parameters
-    if bool_load_params:
-        restored_state = checkpoints.restore_checkpoint(
-            ckpt_dir=CKPT_DIR, target=params, step=0)
-        params = restored_state
+    # if bool_load_params:
+    #     restored_state = checkpoints.restore_checkpoint(
+    #         ckpt_dir=CKPT_DIR, target=params, step=0)
+    #     params = restored_state
 
     @jax.jit
     def rho_x_score(params, samples):
@@ -148,7 +148,8 @@ def training(tw_kin: str = 'TF',
     df = pd.DataFrame()
     df_ema = pd.DataFrame()
     _, key = jrnd.split(key)
-    gen_batches = batches_generator_w_score_mult_gaussian(key, batch_size, prior_dist)
+    gen_batches = batche_generator_1D(key, batch_size, prior_dist)
+    # gen_batches = batch_generator(key, batch_size, prior_dist)
 
     for i in range(epochs+1):
         batch = next(gen_batches)
@@ -201,7 +202,7 @@ def training(tw_kin: str = 'TF',
 def main():
     parser = argparse.ArgumentParser(description="Density fitting training")
     parser.add_argument("--epochs", type=int,
-                        default=5000, help="training epochs")
+                        default=10000, help="training epochs")
     parser.add_argument("--bs", type=int, default=512, help="batch size")
     parser.add_argument("--params", type=bool, default=False,
                         help="load pre-trained model")
