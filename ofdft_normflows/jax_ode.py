@@ -6,7 +6,31 @@ from jax.experimental.ode import odeint
 from typing import Any, Callable
 
 
-def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim: int):
+def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim: int) -> Any:
+    """
+    A function that computes the neural ODE for a given batch of data. Defines the initial and final time as 
+    an array and then computes the output of the neural ODE using the odeint function from jax.experimental.ode.
+
+    Parameters
+    ----------
+    params : Any
+       Flow parameters.
+    batch : Any
+        Sampled batch of data. 
+    f : Callable
+        Neural ODE function.
+    t0 : float
+        Initial time.
+    t1 : float
+        Final time.
+    d_dim : int
+        Dimension of the system. 
+
+    Returns
+    -------
+    Any
+        Returns 'z' and log-likelihood of the function 'f' at the final time 't1' with the same shape as the input batch.
+    """     
     start_and_end_time = jnp.array([t0, t1])
 
     def _evol_fun(states, t):
@@ -16,15 +40,41 @@ def neural_ode(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim
         _evol_fun,
         batch,
         start_and_end_time,
-        atol=1e-5,
-        rtol=1e-5
+        atol=1e-7,
+        rtol=1e-7
     )
     z_t, logp_diff_t = outputs[:, :,
                                :d_dim], outputs[:, :, d_dim:]
     z_t1, logp_diff_t1 = z_t[-1], logp_diff_t[-1]
     return z_t1, logp_diff_t1
 
-def neural_ode_score(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim: int):
+def neural_ode_score(params: Any, batch: Any, f: Callable, t0: float, t1: float, d_dim: int) -> Any:
+    """
+    A function that computes the neural ODE for a given batch of data. Defines the initial and final time as 
+    an array and then computes the output of the neural ODE using the odeint function from jax.experimental.ode.
+
+
+    Parameters
+    ----------
+    params : Any
+       Flow parameters.
+    batch : Any
+        Sampled batch of data.
+    f : Callable
+        Neural ODE function.
+    t0 : float
+        Initial time.
+    t1 : float
+        Final time.
+    d_dim : int
+        Dimension of the system.
+
+    Returns
+    -------
+    Any
+        Returns 'z', log-likelihood 'log_p" and the score 'score' of the function 'f' at the final time 't1' 
+        with the same shape as the input batch.
+    """    
     start_and_end_time = jnp.array([t0, t1])
 
     def _evol_fn_i(params, t, state):
@@ -51,8 +101,8 @@ def neural_ode_score(params: Any, batch: Any, f: Callable, t0: float, t1: float,
         _evol_fun,
         batch,
         start_and_end_time,
-        atol=1e-5,
-        rtol=1e-5
+        atol=1e-7,
+        rtol=1e-7
     )
     z_t, logp_diff_t, score_t = outputs[:, :,
                                         :d_dim], outputs[:, :, d_dim:d_dim+1], outputs[:, :, d_dim+1:]

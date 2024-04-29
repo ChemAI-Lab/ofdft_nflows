@@ -12,6 +12,7 @@ from pyscf.dft import r_numint
 from pyscf.data.nist import BOHR
 
 import distrax
+from distrax import MixtureSameFamily, MultivariateNormalDiag, Categorical
 from distrax._src.distributions import distribution
 from distrax._src.distributions.distribution import Array
 
@@ -21,12 +22,103 @@ PRNGKey = jax.random.PRNGKey
 EventT = distribution.EventT
 Dtype = Any
 
-# jax.config.update('jax_disable_jit', True)
+class MixGaussian(distrax.Distribution):
+  def __init__(self, loc: Array , scale_diag: Array , probs: Array):
+    r"""
+    Creates a distribution with a mixture of Gaussian components.
+
+    Parameters
+    ----------
+    loc : Array
+        Molecular coordinates.
+    scale_diag : Array
+        Sigma matrix.
+    probs : Array
+        Mixture probabilities.
+    """    
+   
+    self.loc = loc
+    self.scale_diag = scale_diag
+    self.probs = probs
+    self.mixture_dist = Categorical(probs=probs)
+    self.components_dist = MultivariateNormalDiag(loc=self.loc,scale_diag=self.scale_diag)
+
+   
+  @jax.jit
+  def prob(self, value: Array) -> jax.Array:
+    """
+    Calculates the probability of an event.
+
+    Parameters
+    ----------
+    value : Array
+        An event. 
+
+    Returns
+    -------
+    jax.Array
+        The probability of the event.
+    """    
+    log_px_components_dist = self.components_dist.log_prob(value).T
+    px_components_dist = jnp.exp(log_px_components_dist)
+    px = px_components_dist@self.probs[:,None]
+    return px
+
+  @jax.jit
+  def log_prob(self, value: Array) -> jax.Array:
+    """
+    Calculates the log probability of an event.
+
+    Parameters
+    ----------
+    value : Array
+        An event.
+
+    Returns
+    -------
+    jax.Array
+        The log probability of the event.
+    """    
+    return jnp.log(self.prob(value))
 
 
+  def _sample_n(self, key: PRNGKey, n: int) -> jax.Array:
+    """
+    Returns 'n' samples. 
+
+    Parameters
+    ----------
+    key : PRNGKey
+        Random key.
+    n : int
+        Number of samples to generate. 
+
+    Returns
+    -------
+    jax.Array
+        An array of 'n' samples. 
+    """    
+    _, key_mixt, key_comp = jax.random.split(key,3)
+    samples_mixt = self.mixture_dist._sample_n(key_mixt,n)
+    samples_mixt_one_hot = jax.nn.one_hot(samples_mixt,self.probs.shape[-1])
+    samples_comp = self.components_dist.sample(seed=key_comp, sample_shape=n)
+    samples_comp = jnp.squeeze(samples_comp,axis=-2)
+
+    samples = jnp.einsum('ijl,ij->il',samples_comp,samples_mixt_one_hot)
+    return samples
+
+  def event_shape(self):
+      pass
+      #6-31G(d,p)
+  @jax.jit
+  def score(self,values):
+    return jax.vmap(jax.grad(lambda x:
+                              self.log_prob(x).sum()))(values)
+  
+  
 class DFTDistribution(distrax.Distribution):
 
-    def __init__(self, atoms: Any, geometry: Any, basis_set: str = 'sto-3g', exc: str = 'b3lyp', dtype_: Dtype = jnp.float32):
+    def __init__(self, atoms: Any, geometry: Any, basis_set: str = '6-31G(d,p)', exc: str = 'b3lyp', dtype_: Dtype = jnp.float32):
 
         self.atoms = atoms
         self.geometry = geometry
@@ -34,14 +126,17 @@ class DFTDistribution(distrax.Distribution):
         self.exc = exc
         self.dtype_ = dtype_
 
-        self._grid_level = 2  # change this for larger molecules
+        self._grid_level = 5 # change this for larger molecules
         self.mol = self._mol()
+        self.grids = dft.gen_grid.Grids(self.mol)
+        self.grids.level = self._grid_level
+        self.grids.build()
         self.Ne = self.mol.tot_electrons()
         self.dft, self.rdm1 = self._dft()
 
-        self.coords = jnp.array(self.dft.grids.coords)
-        self.weights = jnp.array(self.dft.grids.weights)
-
+        self.coords = jnp.array(self.grids.coords)
+        self.weights = jnp.array(self.grids.weights)
+    
     def get_molecule(self):
         m_ = ""
         for a, xi in zip(self.atoms, self.geometry):
@@ -59,14 +154,18 @@ class DFTDistribution(distrax.Distribution):
         mol = gto.M(atom=atoms, basis=self.basis_set,
                     unit='B')  # , symmetry = True)
         return mol
-
+    
     def _dft(self):
+       
         mf_hf = dft.RKS(self.mol)
-        mf_hf.xc = self.exc  # default
-        mf_hf = mf_hf.newton()
+        LDA_X = 1.
+        B88_X = 1.
+        VWN_C = 1.
+
+        mf_hf.xc = f'{LDA_X:} * LDA + {B88_X:} * B88, {VWN_C:} * VWN'
+
+        mf_hf = mf_hf.newton() # second-order algortihm
         mf_hf.kernel()
-        mf_hf.grids.level = self._grid_level
-        mf_hf.grids.build(with_non0tab=True)
         dm = mf_hf.make_rdm1()
         return mf_hf, dm
 
@@ -109,26 +208,3 @@ class DFTDistribution(distrax.Distribution):
         pass
 
 
-if __name__ == '__main__':
-    atoms = ['H', 'H']
-    geom = jnp.array([[0., 0., 0.], [0.76, 0., 0.]])
-
-    m = DFTDistribution(atoms, geom)
-
-    x = jnp.ones((10, 3))
-    # print(m.prob(m,geom))
-    rho = m.prob(m, x)
-    print(rho)
-
-    xx = jax.jacrev(m.prob, argnums=(1,))(m, x)
-
-    print(xx[0].shape)
-    print(xx[0])
-
-    def log_prob(value):
-        return jnp.log(m.prob(m, value))
-    print(jax.jacrev(log_prob)(x))
-
-    print('caca')
-    print(m.coords.shape)
-    print(m.weights.shape)

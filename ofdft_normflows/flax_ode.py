@@ -1,4 +1,5 @@
 from typing import Any, Callable, Tuple
+from jaxtyping import Array
 from functools import partial
 
 import jax
@@ -23,11 +24,12 @@ def safe_sqrt_jvp(primals, tangents):
   tangent_out = 0.5 * x_dot / jnp.where(x > 0, primal_out, jnp.inf)
   return primal_out, tangent_out
   # https://github.com/cagrikymk/JAX-ReaxFF/blob/master/jaxreaxff/forcefield.py
-  
+
+# print(safe_sqrt_jvp([5],[5]))
+# assert 0 
 @nn.jit
 class ODEfun(nn.Module):
-    in_out_dims: Any
-    features: Tuple[int]
+    r""" Base class for ODE function"""
 
     def setup(self):
         self.layers = [nn.Dense(feat)
@@ -52,7 +54,7 @@ class ODEfun(nn.Module):
 
 @nn.jit
 class ODEBlock(nn.Module):
-    """ODE block which contains odeint"""
+    r""" ODE block which contains odeint """
     in_out_dims: Any
     features: Tuple[int]
     bool_neg: Any = True #True(Fwd dynamics), False (reverse dynamics)
@@ -70,7 +72,29 @@ class ODEBlock(nn.Module):
 
         # f_ode = lambda params, x, t: t0*ode_fun.apply(params,t0*t,x)
         @jit
-        def f_ode(params,states,t):
+        def f_ode(params: Any,states: Array, t: float) -> jax.Array:
+            """
+            Function 
+
+            Parameters
+            ----------
+            params : Any
+            
+            states : Array 
+                Array of initial states for the system.
+                
+            t : float
+                Array of float times for evaluation.
+                
+
+            Returns
+            -------
+            jax.Array
+                Initial time 't0' multiplied by the appended array of the derivative of the states
+                and the jacobian of the states with respect to time. 
+                
+            """            
+            
             x,logp_x = states[:self.in_out_dims], states[self.in_out_dims:]
             def f(x): return ode_fun.apply(params,t0*t,x)
             dz = f(x)
