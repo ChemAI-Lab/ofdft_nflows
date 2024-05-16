@@ -50,7 +50,7 @@ The default functionals can be found in the directory [ofdft_normflows](https://
 
 |$\rho_{{\cal M}}$ of $\texttt{LiH}$ for various inter-atomic distances.|The change of $\rho_{{\cal M}}$ and $T_\phi(\mathcal{z})$ during training.|
 |:--:|:--:|
-|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/Figure_1.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/ml4phys2023/Assets/neural_ode_2_gif.gif)|
+|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/dev_OF-DFT_JPC/Assets/DiffR.png)|![](https://github.com/RodrigoAVargasHdz/ofdft_normflows/blob/dev_OF-DFT_JPC/Assets/LiH_ODE.gif)|
 
 ## 3-D 
 For water ($\texttt{H2O}$) and hydrogen ($\texttt{H2}$) molecules, simulations can be run in the following way,
