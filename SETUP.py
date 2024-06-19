@@ -20,6 +20,6 @@ setup(
         'optax>0.1.7',
         'orbax-checkpoint>0.4.4',
     ],
-    python_requires='>=3.6',
+    python_requires='==3.9.6',
     keywords="machine learning, normalizing flows, orbital free density functional theory",
 )
