@@ -11,7 +11,7 @@ def sh_file(mol_name,kin,v_pot,h_pot,x_pot,c_pot,batch_size,epochs,lr,nn,bool_pa
     f.write('#SBATCH --account=def-ravh011\n')
     #f.write(f'#SBATCH --account=rrg-ravh011\n')
     f.write(f'#SBATCH --job-name={nameTail}\n')
-    f.write('#SBATCH --time=02:10:00\n') # time of computation
+    f.write('#SBATCH --time=72:10:00\n') # time of computation
     f.write(f'#SBATCH --output=out_{nameTail}.log\n')
     f.write(f'#SBATCH --mem-per-cpu=90G\n')
     f.write(f'#SBATCH --gpus-per-node=v100l:1\n')
