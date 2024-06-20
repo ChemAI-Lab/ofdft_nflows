@@ -302,8 +302,8 @@ def main():
     global CKPT_DIR
     global FIG_DIR
     
-    CKPT_DIR = f"Results_{layers}layer_{optimizer}_{prior_distribution}/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_{c_pot.upper()}_lr_{lr:.1e}"
-    #CKPT_DIR = f"Results_{layers}layer_{optimizer}_{prior_distribution}_{batch_size}/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_{c_pot.upper()}_lr_{lr:.1e}"
+    #CKPT_DIR = f"Results_{layers}layer_{optimizer}_{prior_distribution}/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_{c_pot.upper()}_lr_{lr:.1e}"
+    CKPT_DIR = f"Results_{layers}layer_{optimizer}_{prior_distribution}_{batch_size}/{mol_name}_{kin.upper()}_{v_pot.upper()}_{h_pot.upper()}_{x_pot.upper()}_{c_pot.upper()}_lr_{lr:.1e}"
     if sched_type.lower() != 'c' or sched_type.lower() != 'const':
         CKPT_DIR = CKPT_DIR + f"_sched_{sched_type.upper()}"
     FIG_DIR = f"{CKPT_DIR}/Figures"

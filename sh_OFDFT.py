@@ -21,7 +21,7 @@ def sh_file(mol_name,kin,v_pot,h_pot,x_pot,c_pot,batch_size,epochs,lr,nn,bool_pa
     f.write('module load python/3.9.6 \n')
     f.write('cd /home/al3x/ && mkdir alex_envs && cd alex_envs && virtualenv --no-download ENV \n')
     f.write('cd $ORIGINAL_DIR \n')
-    f.write('source /home/al3x/envs/ENV/bin/activate\n') # load your environment
+    f.write('source /home/al3x/alex_envs/ENV/bin/activate \n') # load your environment
     f.write('module load scipy-stack \n')
     f.write('pip install -r requirements.txt \n') 
     #############################################################################i
