@@ -17,8 +17,10 @@ def sh_file(mol_name,kin,v_pot,h_pot,x_pot,c_pot,batch_size,epochs,lr,nn,bool_pa
     f.write(f'#SBATCH --gpus-per-node=v100l:1\n')
     f.write(f'#SBATCH --cpus-per-task=2\n\n') 
 
+    f.write('module load gcc/9.3.0 cuda/11.8.0 cudnn/8.6 python/3.9 \n')
+    f.write('export LD_LIBRARY_PATH=$EBROOTCUDA/lib:$EBROOTCUDNN/lib \n')
+    f.write('export XLA_FLAGS=--xla_gpu_cuda_data_dir=$CUDA_HOME \n')
     f.write('ORIGINAL_DIR=$(pwd) \n')
-    f.write('module load python/3.9.6 \n')
     f.write('cd /home/al3x/ && mkdir alex_envs && cd alex_envs && virtualenv --no-download ENV \n')
     f.write('cd $ORIGINAL_DIR \n')
     f.write('source /home/al3x/alex_envs/ENV/bin/activate \n') # load your environment
@@ -51,7 +53,7 @@ if __name__== "__main__":
     h_pot = 'hartree'#Put arguments here
     x_pot = 'dirac_b88_x_e'
     c_pot = ['pw92_c_e'] 
-    batch_size = [2000,2500,3000]
+    batch_size = [2048]
     epochs = 20000
     lr = '3E-4'
     nn = [384]
