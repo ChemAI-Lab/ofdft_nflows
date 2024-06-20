@@ -11,16 +11,19 @@ def sh_file(mol_name,kin,v_pot,h_pot,x_pot,c_pot,batch_size,epochs,lr,nn,bool_pa
     f.write('#SBATCH --account=def-ravh011\n')
     #f.write(f'#SBATCH --account=rrg-ravh011\n')
     f.write(f'#SBATCH --job-name={nameTail}\n')
-    f.write('#SBATCH --time=72:10:00\n') # time of computation
+    f.write('#SBATCH --time=02:10:00\n') # time of computation
     f.write(f'#SBATCH --output=out_{nameTail}.log\n')
-    f.write(f'#SBATCH --mem-per-cpu=150G\n')
-    f.write(f'#SBATCH --gpus-per-node=v100:1\n')
+    f.write(f'#SBATCH --mem-per-cpu=90G\n')
+    f.write(f'#SBATCH --gpus-per-node=v100l:1\n')
     f.write(f'#SBATCH --cpus-per-task=2\n\n') 
 
-
+    f.write('ORIGINAL_DIR=$(pwd) \n')
     f.write('module load python/3.9.6 \n')
-    f.write('source /home/al3x/envs/mixg/bin/activate\n') # load your environment
+    f.write('cd /home/al3x/ && mkdir alex_envs && cd alex_envs && virtualenv --no-download ENV \n')
+    f.write('cd $ORIGINAL_DIR \n')
+    f.write('source /home/al3x/envs/ENV/bin/activate\n') # load your environment
     f.write('module load scipy-stack \n')
+    f.write('pip install -r requirements.txt \n') 
     #############################################################################i
     ## WRITE SCRIPT EXECUTION
 
@@ -47,15 +50,15 @@ if __name__== "__main__":
     v_pot = 'nuclei_potential' #Put arguments here
     h_pot = 'hartree'#Put arguments here
     x_pot = 'dirac_b88_x_e'
-    c_pot = ['pw92_c_e','vwn_c_e'] 
-    batch_size = 2000,
+    c_pot = ['pw92_c_e'] 
+    batch_size = [2000,2500,3000]
     epochs = 20000
     lr = '3E-4'
-    nn = 384
+    nn = [384]
     bool_params = False
     sched_type = 'mix'
     optimizer = ['adam']
-    prior_dist = ['uni_mol','pro_mol']
+    prior_dist = ['pro_mol']
 
     for _mol_name in mol_name:
         for _c_pot in c_pot:
