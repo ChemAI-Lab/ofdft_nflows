@@ -63,9 +63,9 @@ python H2_mol_ofdft_min.py
 ```
 The default kinetic energy functional is the sum of the [Thomas-Fermi and Weizsäcker](https://github.com/RodrigoAVargasHdz/ofdft_normflows/tree/ml4phys2023/ofdft_normflows#readme), however, ``` --kin <name> ``` could be used to select others.
 
-|Vector field for water's electronic density.|
-|:----:|
-|![](https://github.com/RodrigoAVargasHdz/ofdft_normalizing-flows/blob/main/Assets/Vector_field.gif)| 
+|Vector field for water's electronic density.|Vector field for benzene's electronic density.|
+|:----:|:----:|
+|![](https://github.com/RodrigoAVargasHdz/ofdft_normalizing-flows/blob/main/Assets/Vector_field.gif)|![](https://github.com/RodrigoAVargasHdz/ofdft_normalizing-flows/blob/main/Assets/BENZENE.gif)| 
 
 
 
