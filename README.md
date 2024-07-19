@@ -7,7 +7,9 @@ This repository contains the original implementation of the experiments for ["Le
 ## Sketch of the algorithm
 
 In orbital-free density functional theory, the ground-state density is found by solving a constrained optimization problem,
-    $$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}] - \mu \left(\int \rho_\mathcal{M} \mathrm{d} \mathbf{x} - N_{e} \right ) \ \text{s.t. } \rho_\mathcal{M} \geq 0,$$ 
+    
+$$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}] - \mu \left(\int \rho_\mathcal{M} \mathrm{d} \mathbf{x} - N_{e} \right ) \ \text{s.t. } \rho_\mathcal{M} \geq 0,$$ 
+
 where $\mu$ acts as the Lagrange multiplier associated with the normalization constraint on the total number of particles $\left(N_{e}\right)$. These constraints, which enforce both positivity and normalization, 
 ensure the attainment of physically valid solutions.
 
@@ -17,9 +19,12 @@ $$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}] \cancel{- \mu \left(\int \rho_\ma
 --->
 $$\min_{\rho_\mathcal{M}}  E[\rho_\mathcal{M}],$$
 
-where we parameterize the electron density $\rho_\mathcal{M} := N_{e}  \rho_{\phi}(\mathbf{x})$, where $\rho_{\phi}$ is a NF, this form is also referred to as the *shape factor*. The samples are drawn from the base distribution $\rho_0$ and transformed by, $$\mathcal{x} = T_\phi(\mathcal{z}) := \mathcal{z} + \int_{t_{0}}^{T} g_\phi(\mathcal{z}(t),t) \mathrm{d}t.$$
+where we parameterize the electron density $\rho_\mathcal{M} := N_{e}  \rho_{\phi}(\mathbf{x})$, where $\rho_{\phi}$ is a NF, this form is also referred to as the *shape factor*. The samples are drawn from the base distribution $\rho_0$ and transformed by, 
+
+$$\mathcal{x} = T_\phi(\mathcal{z}) := \mathcal{z} + \int_{t_{0}}^{T} g_\phi(\mathcal{z}(t),t) \mathrm{d}t.$$
 
 For the one-dimensional simulations, the architecture of $g_\phi$ is a standard feed-forward neural network (NN),
+
 $$g_\phi = \sum_\ell^M f_\ell(\mathbf{z}_\ell(t)),$$
 
 where $f_\ell(\cdot)$ is a linear layer followed by an activation function, and $M$ is the number of layers. For this work, $g_\phi$ has 3 layers, each with 512 neurons, and the $\tanh$ activation function. For the simulation in three dimensions, $g_\phi$ is parametrized by a permutation equivariant graph NN (GNN), 
