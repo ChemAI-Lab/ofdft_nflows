@@ -6,6 +6,8 @@ from typing import Any, Union
 import pandas as pd
 import time
 
+from typing import Iterable
+
 import jax
 from jax import lax, vmap, numpy as jnp
 import jax.random as jrnd
@@ -23,6 +25,11 @@ from ofdft_normflows.equiv_flows import Gen_EqvFlow as GCNF
 from ofdft_normflows import ProMolecularDensity
 from ofdft_normflows import get_scheduler, batch_generator
 from ofdft_normflows.utils import one_hot_encode, coordinates
+
+from jax.tree_util import tree_map
+
+# from jax.config import config
+# config.update('jax_disable_jit', True)
 
 import matplotlib.pyplot as plt
 
@@ -47,6 +54,12 @@ class F_values:
     vnuc: chex.ArrayDevice
     hart: chex.ArrayDevice
     xc: chex.ArrayDevice
+
+def divide_pytree(pytree, div):
+  return tree_map(lambda pt: pt / div, pytree)
+
+def add_pytrees(pytree1, pytree2):
+  return tree_map(lambda pt1, pt2: pt1 + pt2, pytree1, pytree2)
     
 def training(mol_name: str,
             tw_kin: str = 'TF',
@@ -107,7 +120,9 @@ def training(mol_name: str,
         optax.adam(learning_rate=lr_sched),
     )
 
-    opt_state = optimizer.init(params)
+ 
+
+    # opt_state = optimizer.init(params)
     energies_ema = ema(decay=0.99)
     energies_state = energies_ema.init(
         F_values(energy=jnp.array(0.), kin=jnp.array(0.), vnuc=jnp.array(0.), hart=jnp.array(0.), xc=jnp.array(0.)))
@@ -129,11 +144,6 @@ def training(mol_name: str,
         z0, logp_z0 = NODE_rev(params, zt)
         logp_x = prior_dist.log_prob(z0) - logp_z0
         return jnp.exp(logp_x)  # logp_x
-
-    @jax.jit
-    def T(params, samples):
-        zt, _ = NODE_fwd(params, samples)
-        return zt
 
     t_functional = _kinetic(tw_kin)
     v_functional = _nuclear(v_pot)
@@ -165,23 +175,61 @@ def training(mol_name: str,
                             xc=jnp.mean(e_x + e_c))
         return energy, f_values
     
-    @jax.jit
-    def step(params, opt_state, batch):
-        loss_value, grads = jax.value_and_grad(
+    # @jax.jit
+    # def step(params, opt_state, batch):
+    #     loss_value, grads = jax.value_and_grad(
+    #         loss, has_aux=True)(params, batch)
+    #     updates, opt_state = optimizer.update(grads, opt_state, params)
+    #     params = optax.apply_updates(params, updates)
+    #     return params, opt_state, loss_value
+    
+    
+    def build_train_step(optimizer):
+        """Builds a function for executing a single step in the optimization."""
+
+        @jax.jit
+        def update(params, opt_state, batch):
+            loss_value, grads = jax.value_and_grad(
             loss, has_aux=True)(params, batch)
-        updates, opt_state = optimizer.update(grads, opt_state, params)
-        params = optax.apply_updates(params, updates)
-        return params, opt_state, loss_value
+            updates, opt_state = optimizer.update(grads, opt_state, params)
+            params = optax.apply_updates(params, updates)
+            return params, loss_value
+
+        return update
+    
+    
+    def fit(
+        optimizer,
+        params,
+        batch,
+    ):
+        """Executes a train loop over the train batches using the given optimizer."""
+        
+        train_step = build_train_step(optimizer)
+        opt_state = optimizer.init(params)
+        params,loss_value= train_step(params, opt_state, batch)
+        # for batch in batches:
+            # params, opt_state,loss_value= train_step(params, opt_state, batch)
+
+        return params,loss_value
 
     _, key = jrnd.split(key)
     gen_batches = batch_generator(key, batch_size, prior_dist) 
+    
 
     df = pd.DataFrame()
     df_ema = pd.DataFrame()
     for i in range(epochs+1):
         batch = next(gen_batches)
         start_time = time.time()
-        params, opt_state, loss_value = step(params, opt_state, batch)  # , ci
+        # params, opt_state, loss_value = step(params, opt_state, batch)  # , ci
+        # params, loss_value = fit(optimizer, params, batch) 
+        params, loss_value = fit(
+        optax.MultiSteps(optimizer, every_k_schedule=3),
+        params,
+        batch
+        )
+
         end_time = time.time()
         loss_epoch, losses = loss_value
         
@@ -190,13 +238,13 @@ def training(mol_name: str,
         energies_i_ema, energies_state = energies_ema.update(
             losses, energies_state)
         ei_ema = energies_i_ema.energy
-        norm_val = compute_integral(
-            params, normalization_array, rho_rev, Ne, 0)
+        # norm_val = compute_integral(
+        #     params, normalization_array, rho_rev, Ne, 0)
     
         r_ = {'epoch': i,
               'E': loss_epoch,
               'T': losses.kin, 'V': losses.vnuc, 'H': losses.hart, 'XC': losses.xc,
-              'I': norm_val
+              't': elapsed_time_seconds
               }
 
         df = pd.concat([df, pd.DataFrame(r_, index=[0])], ignore_index=True)
@@ -206,7 +254,7 @@ def training(mol_name: str,
         r_ema = {'epoch': i,
                  'E': energies_i_ema.energy,
                  'T': energies_i_ema.kin, 'V': energies_i_ema.vnuc, 'H': energies_i_ema.hart, 'XC': energies_i_ema.xc,
-                 'I': norm_val, 't': elapsed_time_seconds
+                 't': elapsed_time_seconds
                  }
         df_ema = pd.concat(
             [df_ema, pd.DataFrame(r_ema, index=[0])], ignore_index=True)
@@ -216,62 +264,6 @@ def training(mol_name: str,
         #save models
         checkpoints.save_checkpoint(
             ckpt_dir=CKPT_DIR_ALL, target=params, step=i, keep_every_n_steps=10)
-
-        #PLOTTING
-        if i % 20 == 0 or i <= 25:
-            # 2D Figure
-            z = jnp.linspace(-2.25, 2.25, 128)
-            y = 0.  
-            xx, zz = jnp.meshgrid(z, z)
-            X = jnp.array(
-                [xx.ravel(), y*jnp.ones_like(xx.ravel()), zz.ravel()]).T
-            
-            rho_pred = Ne*rho_rev(params, X)
-
-            vmin = 0.
-            vmax = Ne
-            fig, ax1 = plt.subplots(1, 1)
-           
-            ax1.text(0.075, 0.92,
-                     f'({i}):  E = {ei_ema:.3f}', transform=ax1.transAxes, va='top', fontsize=10, color='w')
-            contour1 = ax1.contourf(
-                xx, zz, rho_pred.reshape(xx.shape), levels=25,  vmin=vmin, vmax=vmax)
-            cbar = fig.colorbar(contour1, ax=ax1)
-            cbar.set_label(r'$N_{e}\rho_{NF}(x)$')
-
-            ax1.scatter(coords[:, 0], coords[:, 2],
-                        marker='o', color='k', s=35, zorder=2.5)
-
-            ax1.set_xlabel('X [Bhor]')
-            ax1.set_ylabel('Z [Bhor]')
-            plt.tight_layout()
-            plt.savefig(f'{FIG_DIR}/epoch_rho_xz_{i}.svg', transparent=True)
-            plt.savefig(f'{FIG_DIR}/epoch_rho_xz_{i}.png')
-
-            # 1D Figure
-            xt = jnp.linspace(-4.5, 4.5, 1000)
-            yz = jnp.zeros((xt.shape[0], 2))
-            zt = lax.concatenate((yz, xt[:, None]), 1)
-            rho_pred = rho_rev(params, zt)
-
-            if i == 0:
-                rho_exact = m.prob(m, zt)
-                norm_dft = jnp.vdot(m.weights, m.prob(m, m.coords))
-
-            plt.clf()
-            fig, ax = plt.subplots()
-            ax.text(0.075, 0.92,
-                    f'({i}):  E = {ei_ema:.3f}', transform=ax1.transAxes, va='top', fontsize=10)
-            plt.plot(xt, rho_exact,
-                     color='k', ls=":", label=r"$\hat{\rho}_{DFT}(x)$" % norm_dft)
-            plt.plot(xt, Ne*rho_pred,
-                     color='tab:blue', label=r'$N_{e}\;\rho_{NF}(x)$')
-            plt.xlabel('X [Bhor]')
-            plt.legend()
-            plt.tight_layout()
-            plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.svg', transparent=True)
-            plt.savefig(f'{FIG_DIR}/epoch_rho_z_{i}.png')
-
 
 
 def main():
